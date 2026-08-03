@@ -5,12 +5,28 @@ import Link from 'next/link';
 
 export const dynamic = 'force-dynamic';
 
-export default async function BeatPage({ params }: { params: { id: string } }) {
-  const { data: beat, error } = await supabase
-    .from('beats')
-    .select('*')
-    .eq('id', params.id)
-    .single();
+export async function generateStaticParams() {
+  return [];
+}
+
+export default async function BeatPage({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
+
+  let beat = null;
+  let error = null;
+
+  try {
+    const result = await supabase
+      .from('beats')
+      .select('*')
+      .eq('id', id)
+      .single();
+    beat = result.data;
+    error = result.error;
+  } catch (e) {
+    console.error('Beat fetch error:', e);
+    notFound();
+  }
 
   if (error || !beat) notFound();
 

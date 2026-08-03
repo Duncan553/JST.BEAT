@@ -1,7 +1,8 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  /* config options here */
+  // Don't statically generate dynamic routes that need runtime data
+  output: 'standalone',
 };
 
 export default nextConfig;
