@@ -1,10 +1,8 @@
 import { supabase } from '@/lib/supabase';
-export const dynamic = 'force-dynamic';
 import { Beat } from '@/types/beat';
 import { notFound } from 'next/navigation';
 import Link from 'next/link';
 
-// Prevent static generation issues — render on-demand
 export const dynamic = 'force-dynamic';
 
 export default async function BeatPage({ params }: { params: { id: string } }) {
