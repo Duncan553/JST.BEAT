@@ -17,39 +17,90 @@ export function Header() {
 
   if (!mounted) {
     return (
-      <header className="sticky top-0 z-40 bg-stone-950/90 backdrop-blur border-b border-orange-900/30 px-6 py-4 flex justify-between items-center">
-        <Link href="/" className="text-xl font-bold tracking-tighter text-orange-100">JST.BEAT</Link>
-        <div className="flex gap-6 text-sm font-medium">
-          <span className="text-stone-500">Beats</span>
-          <span className="text-stone-500">Cart</span>
+      <header className="sticky top-0 z-50 bg-black/80 backdrop-blur-md border-b border-stone-800">
+        <div className="max-w-6xl mx-auto px-6 h-16 flex items-center justify-between">
+          <Link href="/" className="text-xl font-black tracking-tighter text-white focus-visible:ring-2 focus-visible:ring-orange-500 focus-visible:ring-offset-2 focus-visible:ring-offset-black rounded-lg outline-none">
+            JST<span className="text-orange-500">.</span>BEAT
+          </Link>
+          <nav className="flex items-center gap-6">
+            <span className="text-stone-500">Beats</span>
+            <span className="text-stone-500">Cart</span>
+          </nav>
         </div>
       </header>
     );
   }
 
   return (
-    <header className="sticky top-0 z-40 bg-stone-950/90 backdrop-blur border-b border-orange-900/30 px-6 py-4 flex justify-between items-center">
-      <Link href="/" className="text-xl font-bold tracking-tighter text-orange-100 hover:text-orange-300 transition">
-        JST.BEAT
-      </Link>
-
-      <nav className="flex gap-6 text-sm font-medium items-center">
-        <Link href="/" className="text-stone-400 hover:text-orange-200 transition">Beats</Link>
-        <Link href="/about" className="text-stone-400 hover:text-orange-200 transition">About</Link>
-        <Link href="/contact" className="text-stone-400 hover:text-orange-200 transition">Contact</Link>
-        <Link href="/cart" className="text-stone-400 hover:text-orange-200 transition">
-          Cart{count > 0 ? ` (${count})` : ''}
+    <header className="sticky top-0 z-50 bg-black/80 backdrop-blur-md border-b border-stone-800">
+      <div className="max-w-6xl mx-auto px-6 h-16 flex items-center justify-between">
+        <Link 
+          href="/" 
+          className="text-xl font-black tracking-tighter text-white focus-visible:ring-2 focus-visible:ring-orange-500 focus-visible:ring-offset-2 focus-visible:ring-offset-black rounded-lg outline-none transition-transform hover:scale-105"
+        >
+          JST<span className="text-orange-500">.</span>BEAT
         </Link>
-        
-        {isLoggedIn ? (
-          <>
-            <Link href="/dashboard" className="text-stone-400 hover:text-orange-200 transition">Dashboard</Link>
-            <button onClick={logout} className="text-orange-400 hover:text-orange-300 transition text-sm">Logout</button>
-          </>
-        ) : (
-          <Link href="/login" className="text-stone-400 hover:text-orange-200 transition">Login</Link>
-        )}
-      </nav>
+
+        <nav className="hidden md:flex items-center gap-8">
+          <Link 
+            href="/" 
+            className="text-sm font-medium text-stone-300 hover:text-white focus-visible:ring-2 focus-visible:ring-orange-500 focus-visible:ring-offset-2 focus-visible:ring-offset-black rounded-lg outline-none transition-colors"
+          >
+            Beats
+          </Link>
+          <Link 
+            href="/about" 
+            className="text-sm font-medium text-stone-300 hover:text-white focus-visible:ring-2 focus-visible:ring-orange-500 focus-visible:ring-offset-2 focus-visible:ring-offset-black rounded-lg outline-none transition-colors"
+          >
+            About
+          </Link>
+          <Link 
+            href="/contact" 
+            className="text-sm font-medium text-stone-300 hover:text-white focus-visible:ring-2 focus-visible:ring-orange-500 focus-visible:ring-offset-2 focus-visible:ring-offset-black rounded-lg outline-none transition-colors"
+          >
+            Contact
+          </Link>
+        </nav>
+
+        <div className="flex items-center gap-4">
+          <Link 
+            href="/cart" 
+            aria-label={`Cart${count > 0 ? `, ${count} item${count !== 1 ? 's' : ''}` : ''}`}
+            className="relative text-sm font-medium text-stone-300 hover:text-white focus-visible:ring-2 focus-visible:ring-orange-500 focus-visible:ring-offset-2 focus-visible:ring-offset-black rounded-lg outline-none transition-colors px-3 py-2"
+          >
+            Cart
+            {count > 0 && (
+              <span className="absolute -top-1 -right-1 w-5 h-5 bg-orange-600 text-white text-[10px] font-bold rounded-full flex items-center justify-center tabular-nums">
+                {count > 99 ? '99+' : count}
+              </span>
+            )}
+          </Link>
+
+          {isLoggedIn ? (
+            <div className="flex items-center gap-3">
+              <Link 
+                href="/dashboard" 
+                className="text-sm font-medium text-stone-300 hover:text-white focus-visible:ring-2 focus-visible:ring-orange-500 focus-visible:ring-offset-2 focus-visible:ring-offset-black rounded-lg outline-none transition-colors px-3 py-2"
+              >
+                Dashboard
+              </Link>
+              <button 
+                onClick={logout}
+                className="text-sm font-medium text-stone-400 hover:text-red-400 focus-visible:ring-2 focus-visible:ring-orange-500 focus-visible:ring-offset-2 focus-visible:ring-offset-black rounded-lg outline-none transition-colors px-3 py-2 touch-manipulation"
+              >
+                Logout
+              </button>
+            </div>
+          ) : (
+            <Link 
+              href="/login" 
+              className="text-sm font-medium text-stone-300 hover:text-white focus-visible:ring-2 focus-visible:ring-orange-500 focus-visible:ring-offset-2 focus-visible:ring-offset-black rounded-lg outline-none transition-colors px-3 py-2"
+            >
+              Login
+            </Link>
+          )}
+        </div>
+      </div>
     </header>
   );
 }

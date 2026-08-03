@@ -1,13 +1,18 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useRef, useEffect, useState } from 'react';
 import { usePlayerStore } from '@/stores/usePlayerStore';
 
 export function AudioPlayer() {
   const audioRef = useRef<HTMLAudioElement>(null);
-  const { currentBeatId, isPlaying, snippetUrl, pause, play } = usePlayerStore();
+  const { currentBeatId, isPlaying, snippetUrl, pause } = usePlayerStore();
   const [progress, setProgress] = useState(0);
   const [duration, setDuration] = useState(0);
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   useEffect(() => {
     const audio = audioRef.current;
@@ -20,7 +25,7 @@ export function AudioPlayer() {
     else audio.pause();
   }, [isPlaying, snippetUrl]);
 
-  if (!currentBeatId) return null;
+  if (!mounted || !currentBeatId) return null;
 
   const handleTimeUpdate = () => {
     if (audioRef.current) {
@@ -45,26 +50,42 @@ export function AudioPlayer() {
   };
 
   return (
-    <div className="fixed bottom-0 left-0 right-0 bg-stone-950 border-t border-orange-900/30 text-orange-50 px-4 py-3 flex items-center gap-4 z-50">
-      <audio ref={audioRef} onTimeUpdate={handleTimeUpdate} onEnded={() => pause()} preload="metadata" />
-      <button
-        onClick={() => (isPlaying ? pause() : play(currentBeatId, snippetUrl || ''))}
-        className="w-10 h-10 flex items-center justify-center bg-orange-600 text-white rounded-full font-bold text-lg hover:bg-orange-500 transition"
-      >
-        {isPlaying ? '⏸' : '▶'}
-      </button>
-      <div className="flex-1 flex items-center gap-2">
-        <span className="text-xs text-stone-500 w-10 text-right">{formatTime(progress)}</span>
-        <input
-          type="range"
-          min={0}
-          max={duration || 100}
-          value={progress}
-          onChange={handleSeek}
-          className="flex-1 h-1 bg-stone-800 rounded-lg appearance-none cursor-pointer accent-orange-500"
-        />
-        <span className="text-xs text-stone-500 w-10">{formatTime(duration)}</span>
+    <div 
+      className="fixed bottom-0 left-0 right-0 z-50 bg-black/95 backdrop-blur-md border-t border-stone-800 px-6 py-3"
+      role="region"
+      aria-label="Audio player"
+    >
+      <div className="max-w-6xl mx-auto flex items-center gap-4">
+        <button
+          onClick={pause}
+          aria-label="Pause playback"
+          className="w-10 h-10 flex items-center justify-center bg-orange-600 text-white rounded-full hover:bg-orange-500 transition focus-visible:ring-2 focus-visible:ring-orange-400 focus-visible:ring-offset-2 focus-visible:ring-offset-black outline-none touch-manipulation"
+        >
+          ⏸
+        </button>
+
+        <div className="flex-1 flex items-center gap-3">
+          <span className="text-xs text-stone-400 tabular-nums w-10 text-right">{formatTime(progress)}</span>
+          <input
+            type="range"
+            min={0}
+            max={duration || 100}
+            value={progress}
+            onChange={handleSeek}
+            aria-label="Seek"
+            className="flex-1 h-1 bg-stone-700 rounded-full appearance-none cursor-pointer accent-orange-600 focus-visible:ring-2 focus-visible:ring-orange-500 outline-none"
+          />
+          <span className="text-xs text-stone-400 tabular-nums w-10">{formatTime(duration)}</span>
+        </div>
       </div>
+
+      <audio
+        ref={audioRef}
+        onTimeUpdate={handleTimeUpdate}
+        onEnded={pause}
+        preload="metadata"
+        aria-hidden="true"
+      />
     </div>
   );
 }
