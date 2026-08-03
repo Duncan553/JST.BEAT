@@ -14,6 +14,9 @@ export default function CartPage() {
   const [message, setMessage] = useState('');
   const [confirmClear, setConfirmClear] = useState(false);
 
+  // Flip this to false when payment is ready
+  const paymentUnderDev = true;
+
   useEffect(() => {
     setMounted(true);
   }, []);
@@ -124,7 +127,25 @@ export default function CartPage() {
 
       {!paid ? (
         <div className="space-y-4">
-          {!stkSent ? (
+          {paymentUnderDev ? (
+            <div className="p-5 border border-orange-900/40 bg-orange-950/20 rounded-xl text-center space-y-3">
+              <div className="inline-flex items-center gap-2 px-3 py-1 bg-orange-900/30 text-orange-400 text-xs font-bold rounded-full uppercase tracking-wider">
+                <span className="w-1.5 h-1.5 bg-orange-500 rounded-full animate-pulse" />
+                Coming Soon
+              </div>
+              <h3 className="text-lg font-bold text-orange-100">Checkout Temporarily Unavailable</h3>
+              <p className="text-stone-400 text-sm leading-relaxed">
+                The payment system is currently under development. 
+                You can still browse and save beats to your cart — purchases will be live very soon.
+              </p>
+              <Link
+                href="/"
+                className="inline-block px-5 py-2 bg-stone-800 text-orange-50 text-sm font-medium rounded-lg hover:bg-stone-700 transition focus-visible:ring-2 focus-visible:ring-orange-500 outline-none"
+              >
+                Continue Browsing
+              </Link>
+            </div>
+          ) : !stkSent ? (
             <>
               <div>
                 <label htmlFor="mpesa-phone" className="block text-sm font-medium mb-1 text-stone-400">
