@@ -10,4 +10,4 @@ if (!supabaseUrl || !supabaseKey) {
 export const supabase = createClient(
   supabaseUrl || 'http://localhost:54321',
   supabaseKey || 'fallback-key'
-);
+);// env rebuild
