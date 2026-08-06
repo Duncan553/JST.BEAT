@@ -22,20 +22,15 @@ export async function POST(req: NextRequest) {
 
     const reference = `JST-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
 
-    // Insert to Supabase (non-blocking)
-    try {
-      await supabase.from("orders").insert({
-        reference,
-        email,
-        phone,
-        amount: Math.round(amount * 100),
-        status: "pending",
-        items: items,
-        created_at: new Date().toISOString(),
-      });
-    } catch (dbErr: any) {
-      console.error("[API] DB insert warning:", dbErr.message);
-    }
+    await supabase.from("orders").insert({
+      reference,
+      email,
+      phone,
+      amount: Math.round(amount * 100),
+      status: "pending",
+      items: items,
+      created_at: new Date().toISOString(),
+    });
 
     const result = await initializePayment({
       email,
@@ -56,26 +51,9 @@ export async function POST(req: NextRequest) {
       reference: result.reference,
     });
   } catch (error: any) {
-    // EXPOSE FULL ERROR TO FRONTEND FOR DEBUGGING
-    const paystackResponse = error.response?.data;
-    const errorInfo = {
-      message: error.message,
-      paystackStatus: paystackResponse?.status,
-      paystackMessage: paystackResponse?.message,
-      paystackData: paystackResponse?.data,
-      paystackMeta: paystackResponse?.meta,
-      paystackType: paystackResponse?.type,
-      paystackCode: paystackResponse?.code,
-    };
-    
-    console.error("[API] Initialize FULL error:", JSON.stringify(errorInfo, null, 2));
-    
+    console.error("[API] Initialize error:", error.message);
     return NextResponse.json(
-      { 
-        success: false, 
-        message: error.message || "Payment initiation failed",
-        debug: errorInfo,
-      },
+      { success: false, message: error.message || "Payment initiation failed" },
       { status: 500 }
     );
   }
