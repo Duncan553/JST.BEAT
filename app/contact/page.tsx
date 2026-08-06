@@ -99,7 +99,7 @@ export default function ContactPage() {
 
               {/* WhatsApp */}
               <a 
-                href="https://wa.me/25411256994?text=Hi%20JST.BEAT%2C%20I%27m%20interested%20in%20your%20beats"
+                href="https://wa.me/254114256994?text=Hi%20JST.BEAT%2C%20I%27m%20interested%20in%20your%20beats"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="flex items-center gap-4 p-4 border border-stone-800 rounded-xl bg-stone-900/40 hover:bg-stone-900/60 hover:border-green-500/30 transition-all group focus-visible:ring-2 focus-visible:ring-green-500 outline-none"
