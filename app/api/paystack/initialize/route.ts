@@ -22,21 +22,15 @@ export async function POST(req: NextRequest) {
 
     const reference = `JST-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
 
-    // Check if supabase is working
-    let dbStatus = "ok";
-    try {
-      await supabase.from("orders").insert({
-        reference,
-        email,
-        phone,
-        amount: amount * 100,
-        status: "pending",
-        items: items,
-        created_at: new Date().toISOString(),
-      });
-    } catch (dbErr: any) {
-      dbStatus = dbErr.message || "db error";
-    }
+    await supabase.from("orders").insert({
+      reference,
+      email,
+      phone,
+      amount: amount * 100,
+      status: "pending",
+      items: items,
+      created_at: new Date().toISOString(),
+    });
 
     const result = await initializePayment({
       email,
@@ -55,21 +49,16 @@ export async function POST(req: NextRequest) {
       success: true,
       message: result.message || "Check your phone for the M-Pesa prompt and enter your PIN.",
       reference: result.reference,
-      debug: { dbStatus, envCheck: !!process.env.PAYSTACK_SECRET_KEY },
     });
   } catch (error: any) {
-    console.error("[API] Initialize error:", error);
+    console.error("[API] Initialize error:", error.message);
+    
+    // Return full error details to frontend so we can see it
     return NextResponse.json(
       { 
         success: false, 
         message: error.message || "Payment initiation failed",
-        debug: {
-          errorName: error.name,
-          errorCode: error.code,
-          responseData: error.response?.data,
-          envCheck: !!process.env.PAYSTACK_SECRET_KEY,
-          supabaseUrl: !!process.env.NEXT_PUBLIC_SUPABASE_URL,
-        }
+        errorDetails: error.response?.data || null,
       },
       { status: 500 }
     );

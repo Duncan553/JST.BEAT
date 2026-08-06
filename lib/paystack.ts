@@ -12,10 +12,20 @@ const api = axios.create({
   },
 });
 
+/**
+ * Format Kenyan phone for Paystack M-Pesa
+ * Paystack REQUIRES: +254XXXXXXXXX (with + sign)
+ */
 export function formatPhone(phone: string): string {
   let cleaned = phone.replace(/\s/g, "").replace(/-/g, "");
-  if (cleaned.startsWith("0")) cleaned = `254${cleaned.slice(1)}`;
-  return cleaned;
+  
+  // Strip any existing prefix
+  if (cleaned.startsWith("+254")) cleaned = cleaned.slice(4);
+  else if (cleaned.startsWith("254")) cleaned = cleaned.slice(3);
+  else if (cleaned.startsWith("0")) cleaned = cleaned.slice(1);
+  
+  // Return with +254 prefix (required by Paystack)
+  return `+254${cleaned}`;
 }
 
 export async function initializePayment({
@@ -34,32 +44,51 @@ export async function initializePayment({
   const formattedPhone = formatPhone(phone);
   const amountInCents = Math.round(amount * 100);
 
-  const response = await api.post("/charge", {
+  console.log("[Paystack] Initiating:", {
     email,
     amount: amountInCents,
     currency: "KES",
+    phone: formattedPhone,
     reference,
-    metadata,
-    mobile_money: {
-      phone: formattedPhone,
-      provider: "mpesa",
-    },
   });
 
-  return {
-    success: response.data.status,
-    message: response.data.message,
-    data: response.data.data,
-    reference,
-  };
+  try {
+    const response = await api.post("/charge", {
+      email,
+      amount: amountInCents,
+      currency: "KES",
+      reference,
+      metadata,
+      mobile_money: {
+        phone: formattedPhone,
+        provider: "mpesa",
+      },
+    });
+
+    return {
+      success: response.data.status,
+      message: response.data.message,
+      data: response.data.data,
+      reference,
+    };
+  } catch (error: any) {
+    const paystackError = error.response?.data;
+    console.error("[Paystack] Full API Error:", JSON.stringify(paystackError, null, 2));
+    throw new Error(paystackError?.message || error.message || "Payment initiation failed");
+  }
 }
 
 export async function verifyTransaction(reference: string) {
-  const response = await api.get(`/transaction/verify/${reference}`);
-  return {
-    success: response.data.status,
-    data: response.data.data,
-  };
+  try {
+    const response = await api.get(`/transaction/verify/${reference}`);
+    return {
+      success: response.data.status,
+      data: response.data.data,
+    };
+  } catch (error: any) {
+    console.error("[Paystack] Verify error:", error.response?.data || error.message);
+    throw new Error(error.response?.data?.message || "Failed to verify transaction");
+  }
 }
 
 export function verifyWebhookSignature(body: string, signature: string): boolean {
