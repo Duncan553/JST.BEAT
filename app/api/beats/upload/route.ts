@@ -16,7 +16,7 @@ function sanitizeFilename(name: string): string {
 
 export async function POST(req: NextRequest) {
   // Rate limit: 10 uploads per IP per hour
-  const ip = req.ip || req.headers.get('x-forwarded-for') || 'unknown';
+  const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || req.headers.get('x-real-ip') || 'unknown';
   const limit = rateLimit(`upload:${ip}`, 10, 60 * 60 * 1000);
   if (!limit.success) {
     return NextResponse.json({ error: 'Rate limited' }, { status: 429 });
