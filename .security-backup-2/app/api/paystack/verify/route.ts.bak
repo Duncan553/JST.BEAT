@@ -1,0 +1,78 @@
+import { NextRequest, NextResponse } from "next/server";
+import { verifyTransaction } from "@/lib/paystack";
+import { supabase } from "@/lib/supabase";
+
+export async function GET(req: NextRequest) {
+  try {
+    const { searchParams } = new URL(req.url);
+    const reference = searchParams.get("reference");
+
+    if (!reference) {
+      return NextResponse.json(
+        { success: false, message: "Reference is required" },
+        { status: 400 }
+      );
+    }
+
+    const result = await verifyTransaction(reference);
+    const paystackData = result.data;
+
+    if (paystackData?.status === "success") {
+      const { data: order } = await supabase
+        .from("orders")
+        .select("amount, status")
+        .eq("reference", reference)
+        .single();
+
+      if (order && order.status !== "paid" && paystackData.amount !== order.amount) {
+        // Same defense as the webhook: only trust "paid" if the amount
+        // Paystack actually processed matches what we charged for.
+        console.error(
+          `[API] Verify amount mismatch for ${reference}: paystack=${paystackData.amount} order=${order.amount}`
+        );
+        await supabase
+          .from("orders")
+          .update({ status: "flagged", paystack_data: paystackData })
+          .eq("reference", reference);
+
+        return NextResponse.json({
+          success: true,
+          status: "flagged",
+          amount: paystackData.amount / 100,
+          paidAt: paystackData.paid_at,
+        });
+      }
+
+      await supabase
+        .from("orders")
+        .update({
+          status: "paid",
+          paid_at: paystackData.paid_at || new Date().toISOString(),
+          paystack_data: paystackData,
+        })
+        .eq("reference", reference);
+    } else if (["failed", "abandoned"].includes(paystackData?.status)) {
+      await supabase
+        .from("orders")
+        .update({
+          status: paystackData.status,
+          paystack_data: paystackData,
+        })
+        .eq("reference", reference);
+    }
+
+    return NextResponse.json({
+      success: true,
+      status: paystackData?.status,
+      amount: paystackData?.amount ? paystackData.amount / 100 : 0,
+      paidAt: paystackData?.paid_at,
+      data: paystackData,
+    });
+  } catch (error: any) {
+    console.error("[API] Verify error:", error.message);
+    return NextResponse.json(
+      { success: false, message: error.message },
+      { status: 500 }
+    );
+  }
+}

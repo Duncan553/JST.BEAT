@@ -1,0 +1,127 @@
+import { NextRequest, NextResponse } from "next/server";
+import { initializePayment } from "@/lib/paystack";
+import { supabase } from "@/lib/supabase";
+
+// Maps the license the customer picked to the DB column that holds its price.
+// We NEVER trust a price the browser sends us — we look it up ourselves.
+const LICENSE_PRICE_COLUMN: Record<string, "price_mp3" | "price_wav" | "price_stems"> = {
+  mp3: "price_mp3",
+  wav: "price_wav",
+  stems: "price_stems",
+};
+
+export async function POST(req: NextRequest) {
+  try {
+    // NOTE: intentionally NOT destructuring `amount` from the body anymore.
+    // The old code charged whatever number the client sent, which meant
+    // anyone could edit the request in devtools and pay KSh 10 for
+    // anything. We recompute the real total from the beats table below.
+    const { email, phone, items } = await req.json();
+
+    if (!email || !phone || !Array.isArray(items) || items.length === 0) {
+      return NextResponse.json(
+        { success: false, message: "Email, phone and items are required" },
+        { status: 400 }
+      );
+    }
+
+    const beatIds = [...new Set(items.map((i: any) => i?.beat_id).filter(Boolean))];
+    if (beatIds.length === 0) {
+      return NextResponse.json(
+        { success: false, message: "Invalid cart items" },
+        { status: 400 }
+      );
+    }
+
+    const { data: beats, error: beatsError } = await supabase
+      .from("beats")
+      .select("id, title, price_mp3, price_wav, price_stems")
+      .in("id", beatIds);
+
+    if (beatsError || !beats) {
+      console.error("[API] Could not load beats for pricing:", beatsError?.message);
+      return NextResponse.json(
+        { success: false, message: "Could not verify cart against catalog" },
+        { status: 500 }
+      );
+    }
+
+    const beatsById = new Map(beats.map((b) => [b.id, b]));
+
+    let amount = 0;
+    const verifiedItems: Array<{ title: string; beat_id: string; license: string; price: number }> = [];
+
+    for (const item of items) {
+      const beat = beatsById.get(item?.beat_id);
+      const column = LICENSE_PRICE_COLUMN[item?.license];
+
+      if (!beat || !column) {
+        return NextResponse.json(
+          { success: false, message: "One of the items in your cart no longer exists" },
+          { status: 400 }
+        );
+      }
+
+      const price = Number((beat as any)[column]);
+      if (!Number.isFinite(price) || price <= 0) {
+        return NextResponse.json(
+          { success: false, message: "One of the items in your cart has an invalid price" },
+          { status: 400 }
+        );
+      }
+
+      amount += price;
+      verifiedItems.push({
+        title: (beat as any).title,
+        beat_id: (beat as any).id,
+        license: item.license,
+        price,
+      });
+    }
+
+    if (amount < 10) {
+      return NextResponse.json(
+        { success: false, message: "Minimum amount is KSh 10" },
+        { status: 400 }
+      );
+    }
+
+    const reference = `JST-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+
+    await supabase.from("orders").insert({
+      reference,
+      email,
+      phone,
+      amount: Math.round(amount * 100), // stored in kobo/cents, same as before
+      status: "pending",
+      items: verifiedItems,
+      created_at: new Date().toISOString(),
+    });
+
+    const result = await initializePayment({
+      email,
+      amount, // server-computed, not client-supplied
+      phone,
+      reference,
+      metadata: {
+        order_id: reference,
+        customer_phone: phone,
+        item_count: verifiedItems.length,
+        business_settlement: "0114256994",
+      },
+    });
+
+    return NextResponse.json({
+      success: true,
+      message: result.message || "Check your phone for the M-Pesa prompt and enter your PIN.",
+      reference: result.reference,
+      amount,
+    });
+  } catch (error: any) {
+    console.error("[API] Initialize error:", error.message);
+    return NextResponse.json(
+      { success: false, message: error.message || "Payment initiation failed" },
+      { status: 500 }
+    );
+  }
+}

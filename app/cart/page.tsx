@@ -15,6 +15,8 @@ export default function CartPage() {
   const [message, setMessage] = useState('');
   const [confirmClear, setConfirmClear] = useState(false);
   const [reference, setReference] = useState('');
+  const [checking, setChecking] = useState(false);
+  const [downloads, setDownloads] = useState<Array<{ beat_id: string; title: string; url: string; license: string }>>([]);
 
   useEffect(() => {
     setMounted(true);
@@ -49,7 +51,6 @@ export default function CartPage() {
         body: JSON.stringify({
           email,
           phone,
-          amount: getTotal(),
           items: items.map(i => ({
             title: i.beat.title,
             beat_id: i.beat.id,
@@ -87,6 +88,7 @@ export default function CartPage() {
           clearInterval(interval);
           setPaid(true);
           setMessage(`Payment successful! KSh ${data.amount} received.`);
+          loadDownloads(ref);
           return;
         }
 
@@ -104,6 +106,44 @@ export default function CartPage() {
         console.error('Poll error:', err);
       }
     }, 5000);
+  };
+
+  const checkNow = async () => {
+    if (!reference) return;
+    setChecking(true);
+    setMessage('Checking payment status...');
+    try {
+      const res = await fetch(`/api/paystack/verify?reference=${reference}`);
+      const data = await res.json();
+
+      if (data.status === 'success') {
+        setPaid(true);
+        setMessage(`Payment successful! KSh ${data.amount} received.`);
+        loadDownloads(reference);
+      } else if (['failed', 'abandoned'].includes(data.status)) {
+        setMessage('Payment failed or was cancelled.');
+      } else if (data.status === 'flagged') {
+        setMessage('Payment amount could not be verified. Contact support with your reference.');
+      } else {
+        setMessage('Still waiting for M-Pesa confirmation. Try again in a few seconds.');
+      }
+    } catch (err) {
+      setMessage('Could not check payment status. Try again.');
+    } finally {
+      setChecking(false);
+    }
+  };
+
+  const loadDownloads = async (ref: string) => {
+    try {
+      const res = await fetch(`/api/orders/download?reference=${ref}`);
+      const data = await res.json();
+      if (data.success) {
+        setDownloads(data.downloads || []);
+      }
+    } catch (err) {
+      console.error('Download load error:', err);
+    }
   };
 
   const handleRemove = (beatId: string, title: string) => {
@@ -269,10 +309,11 @@ export default function CartPage() {
               </div>
               <div className="flex gap-3">
                 <button 
-                  onClick={() => setPaid(true)} 
-                  className="flex-1 bg-green-700 text-white py-2 rounded-lg hover:bg-green-600 transition focus-visible:ring-2 focus-visible:ring-green-500 outline-none touch-manipulation"
+                  onClick={checkNow} 
+                  disabled={checking}
+                  className="flex-1 bg-green-700 text-white py-2 rounded-lg hover:bg-green-600 disabled:opacity-60 transition focus-visible:ring-2 focus-visible:ring-green-500 outline-none touch-manipulation"
                 >
-                  I've Paid — Check Status
+                  {checking ? 'Checking...' : "I've Paid — Check Status"}
                 </button>
                 <button 
                   onClick={() => { setStkSent(false); setMessage(''); }} 
@@ -290,18 +331,24 @@ export default function CartPage() {
             <p className="font-bold mb-1">Payment successful!</p>
             <p className="text-sm">Your beats are ready for download.</p>
           </div>
-          {items.map((item) => (
-            <a 
-              key={item.beat.id} 
-              href={item.beat.full_url} 
-              download 
-              className="block w-full text-center bg-orange-600 text-white py-3 rounded-lg font-bold hover:bg-orange-500 transition focus-visible:ring-2 focus-visible:ring-orange-500 outline-none touch-manipulation"
-            >
-              Download {item.beat.title} ({item.license.toUpperCase()})
-            </a>
-          ))}
+          
+          {downloads.length > 0 ? (
+            downloads.map((dl) => (
+              <a 
+                key={`${dl.beat_id}-${dl.license}`} 
+                href={dl.url} 
+                download 
+                className="block w-full text-center bg-orange-600 text-white py-3 rounded-lg font-bold hover:bg-orange-500 transition focus-visible:ring-2 focus-visible:ring-orange-500 outline-none touch-manipulation"
+              >
+                Download {dl.title} ({dl.license.toUpperCase()})
+              </a>
+            ))
+          ) : (
+            <p className="text-stone-500 text-center">Preparing your downloads...</p>
+          )}
+          
           <button 
-            onClick={() => { clearCart(); setPaid(false); setStkSent(false); setReference(''); setMessage(''); }} 
+            onClick={() => { clearCart(); setPaid(false); setStkSent(false); setReference(''); setMessage(''); setDownloads([]); }} 
             className="w-full border border-stone-700 py-2 rounded-lg hover:bg-stone-900 transition focus-visible:ring-2 focus-visible:ring-orange-500 outline-none touch-manipulation"
           >
             Buy More Beats

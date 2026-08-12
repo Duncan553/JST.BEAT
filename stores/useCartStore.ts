@@ -4,13 +4,13 @@ import { Beat } from '@/types/beat';
 
 interface CartItem {
   beat: Beat;
-  license: 'mp3' | 'wav' | 'stems';
+  license: 'wav' | 'stems';
   price: number;
 }
 
 interface CartState {
   items: CartItem[];
-  addItem: (beat: Beat, license: 'mp3' | 'wav' | 'stems') => void;
+  addItem: (beat: Beat, license: 'wav' | 'stems') => void;
   removeItem: (beatId: string) => void;
   clearCart: () => void;
   getTotal: () => number;
@@ -30,14 +30,23 @@ export const useCartStore = create<CartState>()(
           return;
         }
 
+        // Stems is only valid if the producer set a stems price AND uploaded a stems ZIP
+        if (license === 'stems' && (!beat.price_stems || beat.price_stems <= 0 || !beat.stems_url)) {
+          console.log('Stems not available for this beat:', beat.title);
+          return;
+        }
+
+        // WAV is always available and is the default
+        const price = license === 'stems' ? beat.price_stems : beat.price_wav;
+
         const newItem: CartItem = {
           beat,
           license,
-          price: beat.price_wav,
+          price,
         };
 
         set({ items: [...items, newItem] });
-        console.log('Added to cart:', beat.title, 'KSh', beat.price_wav);
+        console.log('Added to cart:', beat.title, license.toUpperCase(), 'KSh', price);
       },
 
       removeItem: (beatId) => {

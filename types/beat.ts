@@ -6,8 +6,9 @@ export interface Beat {
   genre: string;
   cover_art: string;
   snippet_url: string;
-  full_url: string;
-  price_mp3: number;
+  full_url?: string;
+  stems_url?: string; // ZIP file with individual tracks — optional!
+  price_mp3: number; // legacy, ignored
   price_wav: number;
   price_stems: number;
   tags: string[];
@@ -16,7 +17,7 @@ export interface Beat {
 
 export interface CartItem {
   beat: Beat;
-  license: 'mp3' | 'wav' | 'stems';
+  license: 'wav' | 'stems';
   price: number;
 }
 

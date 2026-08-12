@@ -25,9 +25,11 @@ export const useBeatsStore = create<BeatsStore>((set, get) => ({
     
     set({ loading: true, error: '' });
     try {
+      // We query the real 'beats' table but explicitly DO NOT select full_url
+      // so the public never sees the download link. Security!
       const { data, error } = await supabase
         .from('beats')
-        .select('*')
+        .select('id, title, bpm, key, genre, cover_art, snippet_url, price_mp3, price_wav, price_stems, tags, created_at')
         .order('created_at', { ascending: false });
 
       if (error) throw error;

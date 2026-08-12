@@ -2,7 +2,7 @@
 
 import { useEffect } from 'react';
 import { useBeatsStore } from '@/stores/useBeatsStore';
-import { BeatCard } from '@/components/beat-card/BeatCard';
+import { BeatChip } from '@/components/beat-chip/BeatChip';
 import Link from 'next/link';
 
 export default function HomePage() {
@@ -11,6 +11,9 @@ export default function HomePage() {
   useEffect(() => {
     fetchBeats();
   }, [fetchBeats]);
+
+  // Only show first 5 beats on landing page
+  const previewBeats = beats.slice(0, 5);
 
   return (
     <div className="space-y-0">
@@ -33,10 +36,10 @@ export default function HomePage() {
             </p>
             <div className="flex flex-wrap gap-4">
               <Link
-                href="/#beats"
+                href="/beats"
                 className="group relative px-8 py-3 bg-orange-600 text-white font-bold rounded-full overflow-hidden transition-all hover:scale-105 active:scale-95 focus-visible:ring-2 focus-visible:ring-orange-400 focus-visible:ring-offset-2 focus-visible:ring-offset-black outline-none touch-manipulation"
               >
-                <span className="relative z-10">Browse Beats</span>
+                <span className="relative z-10">Browse All Beats</span>
                 <span className="absolute inset-0 bg-orange-500 translate-y-full group-hover:translate-y-0 transition-transform duration-300 motion-reduce:transition-none" />
               </Link>
               <Link
@@ -92,8 +95,8 @@ export default function HomePage() {
               one that matches your vision — from dark trap to melodic afro.
             </p>
             <Link
-              href="/#beats"
-              className="inline-block px-6 py-2 border border-white/30 rounded-full text-sm font-medium hover:bg-white hover:text-orange-700 transition-all focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-orange-700 outline-none touch-manipulation"
+              href="/beats"
+              className="inline-block px-6 py-2 border border-white/30 rounded-full text-sm font-medium hover:bg-white hover:text-orange-700 transition focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-orange-700 outline-none touch-manipulation"
             >
               Explore Sounds &rarr;
             </Link>
@@ -140,18 +143,26 @@ export default function HomePage() {
         </div>
       </section>
 
-      {/* BEATS GRID */}
+      {/* BEATS PREVIEW - Only 5 on landing page */}
       <section id="beats" className="bg-black py-20 px-6" aria-labelledby="beats-heading">
         <div className="max-w-6xl mx-auto">
-          <div className="mb-10">
-            <h2 
-              id="beats-heading"
-              className="text-3xl font-bold tracking-tight text-orange-50"
-              style={{ textWrap: 'balance' }}
+          <div className="flex items-center justify-between mb-10">
+            <div>
+              <h2 
+                id="beats-heading"
+                className="text-3xl font-bold tracking-tight text-orange-50"
+                style={{ textWrap: 'balance' }}
+              >
+                Fresh Drops
+              </h2>
+              <p className="text-stone-500 mt-2">Latest beats from the studio</p>
+            </div>
+            <Link 
+              href="/beats"
+              className="text-sm text-orange-500 hover:text-orange-400 font-bold hover:underline focus-visible:ring-2 focus-visible:ring-orange-500 rounded outline-none"
             >
-              Fresh Drops
-            </h2>
-            <p className="text-stone-500 mt-2">Latest beats added to the store</p>
+              View All &rarr;
+            </Link>
           </div>
 
           {error && (
@@ -167,15 +178,11 @@ export default function HomePage() {
           )}
 
           {!error && loading ? (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-              {[1, 2, 3].map((n) => (
-                <div
-                  key={n}
-                  className="border border-stone-800 rounded-xl p-4 animate-pulse bg-stone-900 motion-reduce:animate-none"
-                >
-                  <div className="aspect-square bg-stone-800 rounded-lg mb-4" />
-                  <div className="h-4 bg-stone-800 rounded w-3/4 mb-2" />
-                  <div className="h-4 bg-stone-800 rounded w-1/2" />
+            <div className="flex flex-wrap gap-3 animate-pulse">
+              {[1, 2, 3, 4, 5].map((n) => (
+                <div key={n} className="inline-flex items-center gap-2 px-3 py-2 rounded-full border border-stone-800 bg-stone-900/40">
+                  <div className="w-8 h-8 rounded-full bg-stone-800" />
+                  <div className="w-20 h-3 bg-stone-800 rounded" />
                 </div>
               ))}
             </div>
@@ -191,11 +198,26 @@ export default function HomePage() {
               </Link>
             </div>
           ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-              {beats.map((beat) => (
-                <BeatCard key={beat.id} beat={beat} />
-              ))}
-            </div>
+            <>
+              <div className="flex flex-wrap gap-3">
+                {previewBeats.map((beat) => (
+                  <BeatChip key={beat.id} beat={beat} />
+                ))}
+              </div>
+              {beats.length > 5 && (
+                <div className="mt-8 text-center">
+                  <Link
+                    href="/beats"
+                    className="inline-flex items-center gap-2 px-6 py-3 border border-stone-700 rounded-full text-stone-400 hover:text-white hover:border-orange-500 transition-all hover:scale-105 active:scale-95 focus-visible:ring-2 focus-visible:ring-orange-500 outline-none touch-manipulation"
+                  >
+                    View all {beats.length} beats
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 8l4 4m0 0l-4 4m4-4H3" />
+                    </svg>
+                  </Link>
+                </div>
+              )}
+            </>
           )}
         </div>
       </section>

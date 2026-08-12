@@ -1,56 +1,8 @@
 'use client';
 
 import { useState } from 'react';
-import Link from 'next/link';
 
 export default function ContactPage() {
-  const [submitted, setSubmitted] = useState(false);
-  const [sending, setSending] = useState(false);
-  const [name, setName] = useState('');
-  const [email, setEmail] = useState('');
-  const [message, setMessage] = useState('');
-  const [errors, setErrors] = useState<Record<string, string>>({});
-  const [formError, setFormError] = useState('');
-
-  const validate = () => {
-    const newErrors: Record<string, string> = {};
-    if (!name.trim()) newErrors.name = 'Please enter your name.';
-    if (!email.trim()) {
-      newErrors.email = 'Please enter your email address.';
-    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-      newErrors.email = 'Please enter a valid email address (e.g., name@example.com).';
-    }
-    if (!message.trim()) newErrors.message = 'Please enter a message describing your project.';
-    setErrors(newErrors);
-    return Object.keys(newErrors).length === 0;
-  };
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!validate()) return;
-    
-    setSending(true);
-    setFormError('');
-
-    try {
-      const res = await fetch('/api/contact', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, email, message }),
-      });
-
-      const data = await res.json();
-      
-      if (!res.ok) throw new Error(data.error || 'Failed to send message. Please try again.');
-
-      setSubmitted(true);
-    } catch (err: any) {
-      setFormError(err.message || 'Something went wrong. Please try again or use WhatsApp.');
-    } finally {
-      setSending(false);
-    }
-  };
-
   return (
     <div className="bg-black text-white min-h-screen">
       <section className="max-w-4xl mx-auto px-6 py-24">
@@ -139,99 +91,11 @@ export default function ContactPage() {
             </p>
           </div>
 
-          {/* RIGHT COLUMN — Contact Form */}
-          <div className="bg-stone-900/50 border border-stone-800 rounded-2xl p-8">
-            {!submitted ? (
-              <form onSubmit={handleSubmit} className="space-y-6" noValidate>
-                {formError && (
-                  <div className="p-3 rounded bg-red-950/40 border border-red-900/30 text-red-400 text-sm" role="alert">
-                    {formError}
-                  </div>
-                )}
-                <div>
-                  <label htmlFor="contact-name" className="block text-sm font-medium text-stone-400 mb-2">
-                    Name <span aria-label="required" className="text-orange-500">*</span>
-                  </label>
-                  <input
-                    id="contact-name"
-                    type="text"
-                    value={name}
-                    onChange={(e) => { setName(e.target.value); if (errors.name) setErrors(prev => { const n = { ...prev }; delete n.name; return n; }); }}
-                    className="w-full bg-black border border-stone-700 rounded-lg px-4 py-3 text-white placeholder-stone-600 focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20 outline-none transition-colors"
-                    placeholder="Your name"
-                    aria-invalid={errors.name ? 'true' : 'false'}
-                    aria-describedby={errors.name ? 'name-error' : undefined}
-                  />
-                  {errors.name && (
-                    <p id="name-error" className="text-red-400 text-sm mt-1" role="alert">
-                      {errors.name}
-                    </p>
-                  )}
-                </div>
-                <div>
-                  <label htmlFor="contact-email" className="block text-sm font-medium text-stone-400 mb-2">
-                    Email <span aria-label="required" className="text-orange-500">*</span>
-                  </label>
-                  <input
-                    id="contact-email"
-                    type="email"
-                    value={email}
-                    onChange={(e) => { setEmail(e.target.value); if (errors.email) setErrors(prev => { const n = { ...prev }; delete n.email; return n; }); }}
-                    className="w-full bg-black border border-stone-700 rounded-lg px-4 py-3 text-white placeholder-stone-600 focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20 outline-none transition-colors"
-                    placeholder="your@email.com"
-                    aria-invalid={errors.email ? 'true' : 'false'}
-                    aria-describedby={errors.email ? 'email-error' : undefined}
-                  />
-                  {errors.email && (
-                    <p id="email-error" className="text-red-400 text-sm mt-1" role="alert">
-                      {errors.email}
-                    </p>
-                  )}
-                </div>
-                <div>
-                  <label htmlFor="contact-message" className="block text-sm font-medium text-stone-400 mb-2">
-                    Message <span aria-label="required" className="text-orange-500">*</span>
-                  </label>
-                  <textarea
-                    id="contact-message"
-                    value={message}
-                    onChange={(e) => { setMessage(e.target.value); if (errors.message) setErrors(prev => { const n = { ...prev }; delete n.message; return n; }); }}
-                    rows={4}
-                    className="w-full bg-black border border-stone-700 rounded-lg px-4 py-3 text-white placeholder-stone-600 focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20 outline-none transition-colors resize-y"
-                    placeholder="Tell me about your project..."
-                    aria-invalid={errors.message ? 'true' : 'false'}
-                    aria-describedby={errors.message ? 'message-error' : undefined}
-                  />
-                  {errors.message && (
-                    <p id="message-error" className="text-red-400 text-sm mt-1" role="alert">
-                      {errors.message}
-                    </p>
-                  )}
-                </div>
-                <button
-                  type="submit"
-                  disabled={sending}
-                  className="w-full bg-orange-600 text-white font-bold py-3 rounded-full hover:bg-orange-500 transition-all hover:scale-105 active:scale-95 disabled:bg-stone-700 focus-visible:ring-2 focus-visible:ring-orange-400 focus-visible:ring-offset-2 focus-visible:ring-offset-black outline-none touch-manipulation"
-                >
-                  {sending ? 'Sending...' : 'Send Message'}
-                </button>
-              </form>
-            ) : (
-              <div className="text-center py-12">
-                <h3 className="text-2xl font-bold text-orange-500 mb-2">
-                  Message Sent!
-                </h3>
-                <p className="text-stone-400">
-                  I&apos;ll get back to you as soon as possible.
-                </p>
-                <Link
-                  href="/"
-                  className="inline-block mt-6 px-6 py-2 border border-stone-700 rounded-full text-sm hover:border-orange-500 transition-all focus-visible:ring-2 focus-visible:ring-orange-500 outline-none touch-manipulation"
-                >
-                  Back Home
-                </Link>
-              </div>
-            )}
+          {/* RIGHT COLUMN — Placeholder or additional content */}
+          <div className="bg-stone-900/50 border border-stone-800 rounded-2xl p-8 flex items-center justify-center">
+            <p className="text-stone-500 text-center">
+              Reach out via the links on the left — I&apos;ll get back to you as soon as possible.
+            </p>
           </div>
         </div>
       </section>

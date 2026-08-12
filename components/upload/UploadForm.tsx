@@ -1,7 +1,6 @@
 'use client';
 
 import { useState } from 'react';
-import { supabase } from '@/lib/supabase';
 import { useBeatsStore } from '@/stores/useBeatsStore';
 
 export function UploadForm() {
@@ -10,12 +9,12 @@ export function UploadForm() {
   const [bpm, setBpm] = useState('');
   const [key, setKey] = useState('');
   const [genre, setGenre] = useState('');
-  const [priceMp3, setPriceMp3] = useState('');
   const [priceWav, setPriceWav] = useState('');
   const [priceStems, setPriceStems] = useState('');
   const [tags, setTags] = useState('');
   const [audioFile, setAudioFile] = useState<File | null>(null);
   const [coverFile, setCoverFile] = useState<File | null>(null);
+  const [stemsFile, setStemsFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
   const [message, setMessage] = useState('');
 
@@ -30,47 +29,46 @@ export function UploadForm() {
     setMessage('');
 
     try {
-      const audioPath = `beats/${Date.now()}-${audioFile.name}`;
-      const { error: audioError } = await supabase.storage.from('beats').upload(audioPath, audioFile);
-      if (audioError) throw audioError;
+      const formData = new FormData();
+      formData.append('title', title.trim());
+      formData.append('bpm', bpm);
+      formData.append('key', key.trim());
+      formData.append('genre', genre.trim());
+      formData.append('price_wav', priceWav);
+      formData.append('price_stems', priceStems || '0');
+      formData.append('tags', tags.trim());
+      formData.append('audio', audioFile);
+      formData.append('cover', coverFile);
+      if (stemsFile) {
+        formData.append('stems', stemsFile);
+      }
 
-      const coverPath = `covers/${Date.now()}-${coverFile.name}`;
-      const { error: coverError } = await supabase.storage.from('beats').upload(coverPath, coverFile);
-      if (coverError) throw coverError;
+      const res = await fetch('/api/beats/upload', {
+        method: 'POST',
+        body: formData,
+      });
 
-      const { data: audioUrl } = supabase.storage.from('beats').getPublicUrl(audioPath);
-      const { data: coverUrl } = supabase.storage.from('beats').getPublicUrl(coverPath);
+      const data = await res.json();
 
-      const beatData = {
-        title: title.trim(),
-        bpm: parseInt(bpm) || 0,
-        key: key.trim(),
-        genre: genre.trim(),
-        cover_art: coverUrl.publicUrl,
-        snippet_url: audioUrl.publicUrl,
-        full_url: audioUrl.publicUrl,
-        price_mp3: parseFloat(priceMp3) || 0,
-        price_wav: parseFloat(priceWav) || 0,
-        price_stems: parseFloat(priceStems) || 0,
-        tags: tags.trim() ? tags.split(',').map(t => t.trim()).filter(t => t.length > 0) : [],
-      };
-
-      const { data: inserted, error: dbError } = await supabase.from('beats').insert(beatData).select().single();
-
-      if (dbError) {
-        console.error('Supabase error:', dbError);
-        throw dbError;
+      if (!res.ok) {
+        throw new Error(data.error || 'Upload failed');
       }
 
       // Add to global store so home page sees it immediately
-      if (inserted) addBeat(inserted);
+      if (data.beat) addBeat(data.beat);
 
       setMessage('Beat uploaded successfully!');
       setTitle(''); setBpm(''); setKey(''); setGenre('');
-      setPriceMp3(''); setPriceWav(''); setPriceStems('');
-      setTags(''); setAudioFile(null); setCoverFile(null);
+      setPriceWav(''); setPriceStems(''); setTags('');
+      setAudioFile(null); setCoverFile(null); setStemsFile(null);
+      
+      // Reset file inputs
+      const fileInputs = document.querySelectorAll('input[type="file"]');
+      fileInputs.forEach((input) => {
+        (input as HTMLInputElement).value = '';
+      });
     } catch (err: any) {
-      console.error('Full error:', err);
+      console.error('Upload error:', err);
       setMessage(`Error: ${err.message}`);
     } finally {
       setUploading(false);
@@ -125,20 +123,9 @@ export function UploadForm() {
             />
           </div>
         </div>
-        <div className="grid grid-cols-3 gap-4">
+        <div className="grid grid-cols-2 gap-4">
           <div>
-            <label className="block text-sm font-medium mb-1 text-stone-300">MP3 Price (KSh)</label>
-            <input 
-              type="number" 
-              step="0.01" 
-              value={priceMp3} 
-              onChange={(e) => setPriceMp3(e.target.value)} 
-              className="w-full bg-black border border-stone-700 rounded-lg px-3 py-2 text-white placeholder-stone-600 focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20 outline-none transition-colors" 
-              required 
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium mb-1 text-stone-300">WAV Price (KSh)</label>
+            <label className="block text-sm font-medium mb-1 text-stone-300">WAV Price (KSh) <span className="text-red-500">*</span></label>
             <input 
               type="number" 
               step="0.01" 
@@ -149,15 +136,16 @@ export function UploadForm() {
             />
           </div>
           <div>
-            <label className="block text-sm font-medium mb-1 text-stone-300">Stems Price (KSh)</label>
+            <label className="block text-sm font-medium mb-1 text-stone-300">Stems Price (KSh) <span className="text-stone-500 text-xs">(optional)</span></label>
             <input 
               type="number" 
               step="0.01" 
               value={priceStems} 
               onChange={(e) => setPriceStems(e.target.value)} 
+              placeholder="0 = no stems"
               className="w-full bg-black border border-stone-700 rounded-lg px-3 py-2 text-white placeholder-stone-600 focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20 outline-none transition-colors" 
-              required 
             />
+            <p className="text-xs text-stone-600 mt-1">Leave empty or 0 if no stems</p>
           </div>
         </div>
         <div>
@@ -170,7 +158,7 @@ export function UploadForm() {
           />
         </div>
         <div>
-          <label className="block text-sm font-medium mb-1 text-stone-300">Audio File (MP3/WAV)</label>
+          <label className="block text-sm font-medium mb-1 text-stone-300">Audio File (MP3/WAV, max 20MB) <span className="text-red-500">*</span></label>
           <input 
             type="file" 
             accept="audio/*" 
@@ -180,7 +168,7 @@ export function UploadForm() {
           />
         </div>
         <div>
-          <label className="block text-sm font-medium mb-1 text-stone-300">Cover Art (JPG/PNG)</label>
+          <label className="block text-sm font-medium mb-1 text-stone-300">Cover Art (JPG/PNG, max 5MB) <span className="text-red-500">*</span></label>
           <input 
             type="file" 
             accept="image/*" 
@@ -188,6 +176,16 @@ export function UploadForm() {
             className="w-full text-stone-400 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:bg-orange-600 file:text-white file:font-bold hover:file:bg-orange-500" 
             required 
           />
+        </div>
+        <div>
+          <label className="block text-sm font-medium mb-1 text-stone-300">Stems ZIP (optional, max 50MB)</label>
+          <input 
+            type="file" 
+            accept=".zip,application/zip,application/x-zip-compressed" 
+            onChange={(e) => setStemsFile(e.target.files?.[0] || null)} 
+            className="w-full text-stone-400 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:bg-stone-700 file:text-white file:font-bold hover:file:bg-stone-600" 
+          />
+          <p className="text-xs text-stone-600 mt-1">ZIP file with individual track stems. Only needed if selling stems.</p>
         </div>
         <button 
           type="submit" 

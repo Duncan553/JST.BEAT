@@ -1,0 +1,61 @@
+import { create } from 'zustand';
+import { supabase } from '@/lib/supabase';
+import { Beat } from '@/types/beat';
+
+interface BeatsStore {
+  beats: Beat[];
+  loading: boolean;
+  error: string;
+  fetched: boolean;
+  fetchBeats: () => Promise<void>;
+  updateBeat: (id: string, updates: Partial<Beat>) => void;
+  removeBeat: (id: string) => void;
+  addBeat: (beat: Beat) => void;
+}
+
+export const useBeatsStore = create<BeatsStore>((set, get) => ({
+  beats: [],
+  loading: false,
+  error: '',
+  fetched: false,
+
+  fetchBeats: async () => {
+    // Don't re-fetch if already loaded (prevents flicker on nav)
+    if (get().fetched && get().beats.length > 0) return;
+    
+    set({ loading: true, error: '' });
+    try {
+      // Public listing goes through the beats_public view, which
+      // deliberately excludes full_url. The producer dashboard's own
+      // insert/update/delete calls still hit the real `beats` table.
+      const { data, error } = await supabase
+        .from('beats_public')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+      set({ beats: data || [], loading: false, fetched: true });
+    } catch (err: any) {
+      set({ error: 'Failed to load beats. Check your connection and try again.', loading: false });
+      console.error('Fetch error:', err);
+    }
+  },
+
+  updateBeat: (id, updates) => {
+    set((state) => ({
+      beats: state.beats.map((b) => (b.id === id ? { ...b, ...updates } : b)),
+    }));
+  },
+
+  removeBeat: (id) => {
+    set((state) => ({
+      beats: state.beats.filter((b) => b.id !== id),
+    }));
+  },
+
+  addBeat: (beat) => {
+    set((state) => ({
+      beats: [beat, ...state.beats],
+    }));
+  },
+}));
