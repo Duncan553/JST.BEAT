@@ -22,9 +22,19 @@ const FALLBACK_PRODUCERS: ProducerInfo[] = [
 
 /** Server-only — used by pages that show producer bios/contact (About, Contact). */
 export async function getProducers(): Promise<ProducerInfo[]> {
-  const { data, error } = await supabaseAdmin
-    .from('producers')
-    .select('email, name, full_name, photo_url, whatsapp, instagram, tiktok, twitter, youtube');
+  // Wrapped in try/catch (not just the `error` check below) because
+  // supabaseAdmin itself throws when Supabase env vars aren't set for this
+  // environment — e.g. a Preview deploy, which only has Production secrets.
+  // That throw happens before any query runs, so it needs its own catch —
+  // same fallback as a real query error.
+  let data, error;
+  try {
+    ({ data, error } = await supabaseAdmin
+      .from('producers')
+      .select('email, name, full_name, photo_url, whatsapp, instagram, tiktok, twitter, youtube'));
+  } catch {
+    return FALLBACK_PRODUCERS;
+  }
 
   if (error || !data || data.length === 0) return FALLBACK_PRODUCERS;
 
