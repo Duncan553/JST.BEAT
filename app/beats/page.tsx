@@ -3,7 +3,10 @@
 import { useEffect } from 'react';
 import { useBeatsStore } from '@/stores/useBeatsStore';
 import { BeatChip } from '@/components/beat-chip/BeatChip';
+import { Beat } from '@/types/beat';
 import Link from 'next/link';
+
+const PRODUCERS = ['jst.dan', 'tisco prodz'] as const;
 
 export default function BeatsPage() {
   const { beats, loading, error, fetchBeats } = useBeatsStore();
@@ -16,8 +19,8 @@ export default function BeatsPage() {
     <div className="min-h-screen bg-black text-white pb-32">
       {/* Header */}
       <div className="max-w-6xl mx-auto px-6 pt-6">
-        <Link 
-          href="/" 
+        <Link
+          href="/"
           className="inline-flex items-center gap-2 text-sm text-stone-500 hover:text-orange-400 transition-colors"
         >
           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -32,15 +35,14 @@ export default function BeatsPage() {
         <h1 className="text-4xl md:text-5xl font-black tracking-tighter text-orange-50 mb-2">
           All Beats
         </h1>
-        <p className="text-stone-500">Browse the full catalog. Click any beat to explore.</p>
+        <p className="text-stone-500">Two producers, two individual catalogs. Click any beat to explore.</p>
       </div>
 
-      {/* Beats */}
       <div className="max-w-6xl mx-auto px-6">
         {error && (
           <div className="text-center py-12 border border-red-900/50 rounded-xl bg-red-950/20" role="alert">
             <p className="text-red-400 text-lg mb-2">{error}</p>
-            <button 
+            <button
               onClick={() => fetchBeats()}
               className="text-sm text-orange-400 hover:text-orange-300 underline focus-visible:ring-2 focus-visible:ring-orange-500 rounded outline-none"
             >
@@ -62,19 +64,33 @@ export default function BeatsPage() {
           <div className="text-center py-20 border border-stone-800 rounded-xl bg-stone-900/30">
             <p className="text-stone-500 text-lg">No beats available yet.</p>
             <p className="text-stone-600 text-sm mt-2">Check back soon for new drops.</p>
-            <Link 
-              href="/contact" 
+            <Link
+              href="/about"
               className="inline-block mt-4 text-orange-500 hover:text-orange-400 text-sm underline focus-visible:ring-2 focus-visible:ring-orange-500 rounded outline-none"
             >
               Request a custom beat instead
             </Link>
           </div>
         ) : (
-          <div className="flex flex-wrap gap-3">
-            {beats.map((beat) => (
-              <BeatChip key={beat.id} beat={beat} />
-            ))}
-          </div>
+          // Each producer gets their own section — catalogs stay separate,
+          // never merged into one flat list.
+          PRODUCERS.map((producer) => {
+            const producerBeats = beats.filter((b: Beat) => b.producer === producer);
+            return (
+              <div key={producer} className="mb-14">
+                <h2 className="text-2xl font-bold text-orange-100 mb-4">{producer}</h2>
+                {producerBeats.length === 0 ? (
+                  <p className="text-stone-600 text-sm">No beats from {producer} yet.</p>
+                ) : (
+                  <div className="flex flex-wrap gap-3">
+                    {producerBeats.map((beat) => (
+                      <BeatChip key={beat.id} beat={beat} />
+                    ))}
+                  </div>
+                )}
+              </div>
+            );
+          })
         )}
       </div>
     </div>

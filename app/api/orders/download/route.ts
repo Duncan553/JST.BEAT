@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
+import { rateLimit } from "@/lib/rate-limit";
 
 function extractStoragePath(publicUrl: string, bucket: string): string | null {
   const parts = publicUrl.split(`/${bucket}/`);
@@ -9,6 +10,15 @@ function extractStoragePath(publicUrl: string, bucket: string): string | null {
 
 export async function GET(req: NextRequest) {
   try {
+    // The only thing gating this route is knowledge of `reference` — and
+    // it's a timestamp + a 3-digit random number, not a real secret. Rate
+    // limiting doesn't fix that, but it does kill casual brute-forcing.
+    const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || req.headers.get("x-real-ip") || "unknown";
+    const limit = rateLimit(`download:${ip}`, 20, 60 * 1000);
+    if (!limit.success) {
+      return NextResponse.json({ success: false, message: "Too many requests" }, { status: 429 });
+    }
+
     const { searchParams } = new URL(req.url);
     const reference = searchParams.get("reference");
 
@@ -63,7 +73,6 @@ export async function GET(req: NextRequest) {
 
       // Pick the right file based on what they bought
       let fileUrl: string | null = null;
-      let bucket: string = 'beats-private';
 
       if (item.license === 'stems') {
         fileUrl = beat.stems_url || null;

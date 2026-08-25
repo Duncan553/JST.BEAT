@@ -2,6 +2,8 @@
 
 import { useState } from 'react';
 import { useBeatsStore } from '@/stores/useBeatsStore';
+import { supabase } from '@/lib/supabase';
+import { toKes, Currency } from '@/lib/currency';
 
 export function UploadForm() {
   const { addBeat } = useBeatsStore();
@@ -11,8 +13,10 @@ export function UploadForm() {
   const [genre, setGenre] = useState('');
   const [priceWav, setPriceWav] = useState('');
   const [priceStems, setPriceStems] = useState('');
+  const [priceCurrency, setPriceCurrency] = useState<Currency>('KES');
   const [tags, setTags] = useState('');
   const [audioFile, setAudioFile] = useState<File | null>(null);
+  const [snippetFile, setSnippetFile] = useState<File | null>(null);
   const [coverFile, setCoverFile] = useState<File | null>(null);
   const [stemsFile, setStemsFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
@@ -34,17 +38,31 @@ export function UploadForm() {
       formData.append('bpm', bpm);
       formData.append('key', key.trim());
       formData.append('genre', genre.trim());
-      formData.append('price_wav', priceWav);
-      formData.append('price_stems', priceStems || '0');
+      // Producer can type prices in KES or USD (whichever they think in) —
+      // always normalized to KES here, before it leaves the browser. The
+      // server, DB, and Paystack only ever see KES.
+      formData.append('price_wav', String(toKes(Number(priceWav), priceCurrency)));
+      formData.append('price_stems', priceStems ? String(toKes(Number(priceStems), priceCurrency)) : '0');
       formData.append('tags', tags.trim());
       formData.append('audio', audioFile);
+      if (snippetFile) {
+        formData.append('snippet', snippetFile);
+      }
       formData.append('cover', coverFile);
       if (stemsFile) {
         formData.append('stems', stemsFile);
       }
 
+      // Server needs proof of who's uploading — it can't read our session
+      // itself (stored in localStorage, not a cookie), so we hand it the
+      // access token and it verifies that with Supabase directly.
+      const { data: sessionData } = await supabase.auth.getSession();
+      const token = sessionData.session?.access_token;
+      if (!token) throw new Error('Not logged in');
+
       const res = await fetch('/api/beats/upload', {
         method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
         body: formData,
       });
 
@@ -59,8 +77,8 @@ export function UploadForm() {
 
       setMessage('Beat uploaded successfully!');
       setTitle(''); setBpm(''); setKey(''); setGenre('');
-      setPriceWav(''); setPriceStems(''); setTags('');
-      setAudioFile(null); setCoverFile(null); setStemsFile(null);
+      setPriceWav(''); setPriceStems(''); setPriceCurrency('KES'); setTags('');
+      setAudioFile(null); setSnippetFile(null); setCoverFile(null); setStemsFile(null);
       
       // Reset file inputs
       const fileInputs = document.querySelectorAll('input[type="file"]');
@@ -123,27 +141,47 @@ export function UploadForm() {
             />
           </div>
         </div>
+        <div>
+          <label className="block text-sm font-medium mb-1 text-stone-300">Price currency</label>
+          <div className="flex gap-2">
+            {(['KES', 'USD'] as const).map((c) => (
+              <button
+                key={c}
+                type="button"
+                onClick={() => setPriceCurrency(c)}
+                className={`px-4 py-1.5 rounded-full text-sm font-bold border transition ${
+                  priceCurrency === c
+                    ? 'bg-orange-600 border-orange-600 text-white'
+                    : 'border-stone-700 text-stone-400 hover:border-orange-500 hover:text-orange-300'
+                }`}
+              >
+                {c === 'KES' ? 'KSh' : 'USD'}
+              </button>
+            ))}
+          </div>
+          <p className="text-xs text-stone-600 mt-1">Type prices below in this currency — stored as KSh either way, that&apos;s all Paystack/M-Pesa can charge.</p>
+        </div>
         <div className="grid grid-cols-2 gap-4">
           <div>
-            <label className="block text-sm font-medium mb-1 text-stone-300">WAV Price (KSh) <span className="text-red-500">*</span></label>
-            <input 
-              type="number" 
-              step="0.01" 
-              value={priceWav} 
-              onChange={(e) => setPriceWav(e.target.value)} 
-              className="w-full bg-black border border-stone-700 rounded-lg px-3 py-2 text-white placeholder-stone-600 focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20 outline-none transition-colors" 
-              required 
+            <label className="block text-sm font-medium mb-1 text-stone-300">WAV Price ({priceCurrency === 'USD' ? 'USD' : 'KSh'}) <span className="text-red-500">*</span></label>
+            <input
+              type="number"
+              step="0.01"
+              value={priceWav}
+              onChange={(e) => setPriceWav(e.target.value)}
+              className="w-full bg-black border border-stone-700 rounded-lg px-3 py-2 text-white placeholder-stone-600 focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20 outline-none transition-colors"
+              required
             />
           </div>
           <div>
-            <label className="block text-sm font-medium mb-1 text-stone-300">Stems Price (KSh) <span className="text-stone-500 text-xs">(optional)</span></label>
-            <input 
-              type="number" 
-              step="0.01" 
-              value={priceStems} 
-              onChange={(e) => setPriceStems(e.target.value)} 
+            <label className="block text-sm font-medium mb-1 text-stone-300">Stems Price ({priceCurrency === 'USD' ? 'USD' : 'KSh'}) <span className="text-stone-500 text-xs">(optional)</span></label>
+            <input
+              type="number"
+              step="0.01"
+              value={priceStems}
+              onChange={(e) => setPriceStems(e.target.value)}
               placeholder="0 = no stems"
-              className="w-full bg-black border border-stone-700 rounded-lg px-3 py-2 text-white placeholder-stone-600 focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20 outline-none transition-colors" 
+              className="w-full bg-black border border-stone-700 rounded-lg px-3 py-2 text-white placeholder-stone-600 focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20 outline-none transition-colors"
             />
             <p className="text-xs text-stone-600 mt-1">Leave empty or 0 if no stems</p>
           </div>
@@ -158,14 +196,28 @@ export function UploadForm() {
           />
         </div>
         <div>
-          <label className="block text-sm font-medium mb-1 text-stone-300">Audio File (MP3/WAV, max 20MB) <span className="text-red-500">*</span></label>
-          <input 
-            type="file" 
-            accept="audio/*" 
-            onChange={(e) => setAudioFile(e.target.files?.[0] || null)} 
-            className="w-full text-stone-400 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:bg-orange-600 file:text-white file:font-bold hover:file:bg-orange-500" 
-            required 
+          <label className="block text-sm font-medium mb-1 text-stone-300">Full Beat (MP3/WAV, max 50MB) <span className="text-red-500">*</span></label>
+          <input
+            type="file"
+            accept="audio/*"
+            onChange={(e) => setAudioFile(e.target.files?.[0] || null)}
+            className="w-full text-stone-400 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:bg-orange-600 file:text-white file:font-bold hover:file:bg-orange-500"
+            required
           />
+          <p className="text-xs text-stone-600 mt-1">The complete track — stays private, only buyers get this after payment.</p>
+        </div>
+        <div>
+          <label className="block text-sm font-medium mb-1 text-stone-300">Tagged Snippet (optional, max 2 min plays)</label>
+          <input
+            type="file"
+            accept="audio/*"
+            onChange={(e) => setSnippetFile(e.target.files?.[0] || null)}
+            className="w-full text-stone-400 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:bg-stone-700 file:text-white file:font-bold hover:file:bg-stone-600"
+          />
+          <p className="text-xs text-stone-600 mt-1">
+            Upload the exact clip you want people to hear for free — the hook, the hardest part, whatever sells it.
+            Leave empty and it&apos;ll auto-grab the first 2 minutes of the full beat instead.
+          </p>
         </div>
         <div>
           <label className="block text-sm font-medium mb-1 text-stone-300">Cover Art (JPG/PNG, max 5MB) <span className="text-red-500">*</span></label>

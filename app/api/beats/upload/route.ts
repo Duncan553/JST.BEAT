@@ -1,12 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase-admin';
 import { rateLimit } from '@/lib/rate-limit';
+import { requireUploader } from '@/lib/auth-server';
+import { createSnippet } from '@/lib/audio-tag';
 import crypto from 'crypto';
 
 const ALLOWED_AUDIO = ['audio/mpeg', 'audio/wav', 'audio/x-wav', 'audio/mp3', 'audio/wave'];
 const ALLOWED_IMAGES = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp', 'image/heic'];
 const ALLOWED_ZIP = ['application/zip', 'application/x-zip-compressed'];
-const MAX_AUDIO = 20 * 1024 * 1024;      // 20MB
+const MAX_AUDIO = 50 * 1024 * 1024;      // 50MB — a full WAV track can easily be 30-40MB+
 const MAX_IMAGE = 5 * 1024 * 1024;       // 5MB
 const MAX_STEMS = 50 * 1024 * 1024;      // 50MB for ZIP
 
@@ -15,6 +17,14 @@ function sanitizeFilename(name: string): string {
 }
 
 export async function POST(req: NextRequest) {
+  // Only jst.dan and tisco prodz may post beats — everything below this
+  // uses the service-role client, which bypasses RLS entirely, so this
+  // check is the ONLY thing standing between this route and the public.
+  const producer = await requireUploader(req);
+  if (!producer) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
   // Rate limit: 10 uploads per IP per hour
   const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || req.headers.get('x-real-ip') || 'unknown';
   const limit = rateLimit(`upload:${ip}`, 10, 60 * 60 * 1000);
@@ -32,6 +42,7 @@ export async function POST(req: NextRequest) {
     const price_stems = parseFloat(String(formData.get('price_stems'))) || 0;
     const tagsRaw = String(formData.get('tags') || '').trim();
     const audio = formData.get('audio') as File | null;
+    const snippetFile = formData.get('snippet') as File | null;
     const cover = formData.get('cover') as File | null;
     const stemsZip = formData.get('stems') as File | null;
 
@@ -44,7 +55,13 @@ export async function POST(req: NextRequest) {
     }
     if (!ALLOWED_AUDIO.includes(audio.type) || audio.size > MAX_AUDIO) {
       console.error(`[Upload] Rejected audio: type="${audio.type}", size=${audio.size}`);
-      return NextResponse.json({ error: `Invalid audio file (must be MP3/WAV, under 20MB). Got: ${audio.type}` }, { status: 400 });
+      return NextResponse.json({ error: `Invalid audio file (must be MP3/WAV, under 50MB). Got: ${audio.type}` }, { status: 400 });
+    }
+    // Tagged snippet is optional — if they don't upload one, we auto-trim
+    // the full track instead, both capped the same way (see lib/audio-tag.ts).
+    if (snippetFile && (!ALLOWED_AUDIO.includes(snippetFile.type) || snippetFile.size > MAX_AUDIO)) {
+      console.error(`[Upload] Rejected snippet: type="${snippetFile.type}", size=${snippetFile.size}`);
+      return NextResponse.json({ error: `Invalid snippet file (must be MP3/WAV, under 50MB). Got: ${snippetFile.type}` }, { status: 400 });
     }
     if (!ALLOWED_IMAGES.includes(cover.type) || cover.size > MAX_IMAGE) {
       console.error(`[Upload] Rejected image: type="${cover.type}", size=${cover.size}`);
@@ -71,9 +88,18 @@ export async function POST(req: NextRequest) {
     const coverPath = `covers/${Date.now()}-${crypto.randomUUID()}-${safeCoverName}`;
     const fullPath = `full/${Date.now()}-${crypto.randomUUID()}-${safeAudioName}`;
 
+    // Preview copy gets the producer tag mixed in (protects it from being
+    // ripped and resold as the full track); the full/private copies below
+    // stay untouched originals — that's what the buyer is actually paying
+    // for. If they uploaded their own snippet clip, that's what plays —
+    // otherwise it falls back to auto-trimming the first 45s of the track.
+    const snippet = snippetFile
+      ? await createSnippet(Buffer.from(await snippetFile.arrayBuffer()), sanitizeFilename(snippetFile.name), producer)
+      : await createSnippet(Buffer.from(await audio.arrayBuffer()), safeAudioName, producer);
+
     // Upload preview to PUBLIC bucket
     const { error: audioErr } = await supabaseAdmin.storage
-      .from('beats-public').upload(audioPath, audio, { contentType: audio.type, upsert: false });
+      .from('beats-public').upload(audioPath, snippet, { contentType: audio.type, upsert: false });
     if (audioErr) throw audioErr;
 
     // Upload cover to PUBLIC bucket
@@ -109,7 +135,7 @@ export async function POST(req: NextRequest) {
       : [];
 
     const beatData: any = {
-      title, bpm, key, genre,
+      title, bpm, key, genre, producer,
       cover_art: coverUrl.publicUrl,
       snippet_url: audioUrl.publicUrl,
       full_url: fullUrl.publicUrl,

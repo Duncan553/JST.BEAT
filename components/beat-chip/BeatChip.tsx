@@ -5,6 +5,7 @@ import { Beat } from '@/types/beat';
 import { usePlayerStore } from '@/stores/usePlayerStore';
 import { useCartStore } from '@/stores/useCartStore';
 import Link from 'next/link';
+import Image from 'next/image';
 
 interface BeatChipProps {
   beat: Beat;
@@ -39,14 +40,20 @@ export function BeatChip({ beat }: BeatChipProps) {
           className="relative w-8 h-8 rounded-full overflow-hidden border border-stone-700 shrink-0"
           style={{ animation: isThisPlaying ? 'chip-spin 2s linear infinite' : 'none' }}
         >
-          <img 
-            src={beat.cover_art || '/images/hero-studio.jpg'} 
-            alt="" 
-            className="w-full h-full object-cover"
+          <Image
+            src={beat.cover_art || '/images/hero-studio.jpg'}
+            alt=""
+            fill
+            sizes="32px"
+            className="object-cover"
           />
           {isThisPlaying && (
-            <div className="absolute inset-0 flex items-center justify-center bg-black/30">
-              <div className="w-1.5 h-1.5 bg-orange-500 rounded-full animate-pulse" />
+            <div className="absolute inset-0 flex items-center justify-center bg-black/30" aria-hidden="true">
+              <span className="flex gap-[2px] items-end h-3">
+                <span className="w-[2px] bg-orange-500 rounded-full animate-[bounce_0.8s_ease-in-out_infinite] motion-reduce:animate-none" style={{ height: '40%', animationDelay: '0ms' }} />
+                <span className="w-[2px] bg-orange-500 rounded-full animate-[bounce_0.8s_ease-in-out_infinite] motion-reduce:animate-none" style={{ height: '90%', animationDelay: '120ms' }} />
+                <span className="w-[2px] bg-orange-500 rounded-full animate-[bounce_0.8s_ease-in-out_infinite] motion-reduce:animate-none" style={{ height: '60%', animationDelay: '240ms' }} />
+              </span>
             </div>
           )}
         </div>

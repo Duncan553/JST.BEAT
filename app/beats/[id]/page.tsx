@@ -5,6 +5,7 @@ import { useParams } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 import { Beat } from '@/types/beat';
 import Link from 'next/link';
+import Image from 'next/image';
 import { useCartStore } from '@/stores/useCartStore';
 import { usePlayerStore } from '@/stores/usePlayerStore';
 
@@ -46,10 +47,12 @@ function BigVinyl({ cover, isPlaying }: { cover: string; isPlaying: boolean }) {
     >
       <div className="absolute -inset-6 bg-orange-600/10 rounded-full blur-3xl" />
       <div className="relative w-full h-full rounded-full overflow-hidden border-[3px] border-stone-800 shadow-2xl shadow-black/80">
-        <img 
-          src={cover || '/images/hero-studio.jpg'} 
-          alt="" 
-          className="absolute inset-0 w-full h-full object-cover"
+        <Image
+          src={cover || '/images/hero-studio.jpg'}
+          alt=""
+          fill
+          sizes="(max-width: 768px) 256px, 320px"
+          className="object-cover"
         />
         <div className="absolute inset-0 bg-black/25" />
         <div className="absolute inset-[6px] rounded-full border border-white/5" />

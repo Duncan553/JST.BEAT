@@ -30,8 +30,12 @@ export const useCartStore = create<CartState>()(
           return;
         }
 
-        // Stems is only valid if the producer set a stems price AND uploaded a stems ZIP
-        if (license === 'stems' && (!beat.price_stems || beat.price_stems <= 0 || !beat.stems_url)) {
+        // Stems availability is signaled by price_stems alone — the anon
+        // beats list never receives stems_url (same reason it never gets
+        // full_url: don't hand out storage paths for private buckets to
+        // the public). Real authorization happens server-side in
+        // /api/orders/download after payment, using the admin client.
+        if (license === 'stems' && (!beat.price_stems || beat.price_stems <= 0)) {
           console.log('Stems not available for this beat:', beat.title);
           return;
         }

@@ -4,6 +4,7 @@ import { useEffect } from 'react';
 import { useBeatsStore } from '@/stores/useBeatsStore';
 import { BeatChip } from '@/components/beat-chip/BeatChip';
 import Link from 'next/link';
+import Image from 'next/image';
 
 export default function HomePage() {
   const { beats, loading, error, fetchBeats } = useBeatsStore();
@@ -12,8 +13,21 @@ export default function HomePage() {
     fetchBeats();
   }, [fetchBeats]);
 
-  // Only show first 5 beats on landing page
-  const previewBeats = beats.slice(0, 5);
+  // Landing page teases the catalog, doesn't replace it — aims for 2 from
+  // each producer, "View All" sends them to the full individual catalogs.
+  // Backfills from whichever producer has more so the homepage doesn't go
+  // sparse just because one of them has fewer (or zero, e.g. before the
+  // producer migration has run) beats tagged yet.
+  const TARGET_PREVIEW_COUNT = 4;
+  let previewBeats = [
+    ...beats.filter((b) => b.producer === 'jst.dan').slice(0, 2),
+    ...beats.filter((b) => b.producer === 'tisco prodz').slice(0, 2),
+  ];
+  if (previewBeats.length < TARGET_PREVIEW_COUNT) {
+    const usedIds = new Set(previewBeats.map((b) => b.id));
+    const extra = beats.filter((b) => !usedIds.has(b.id)).slice(0, TARGET_PREVIEW_COUNT - previewBeats.length);
+    previewBeats = [...previewBeats, ...extra];
+  }
 
   return (
     <div className="space-y-0">
@@ -52,12 +66,14 @@ export default function HomePage() {
           </div>
 
           <div className="flex-1 relative">
-            <div className="relative rounded-2xl overflow-hidden border border-stone-800 rotate-2 hover:rotate-0 transition-transform duration-500 motion-reduce:transition-none motion-reduce:rotate-0">
-              <img
+            <div className="relative aspect-[3/2] rounded-2xl overflow-hidden border border-stone-800 rotate-2 hover:rotate-0 transition-transform duration-500 motion-reduce:transition-none motion-reduce:rotate-0">
+              <Image
                 src="/images/hero-studio.jpg"
                 alt="Studio mixing console with colorful LED lights"
-                className="w-full h-auto object-cover"
-                loading="eager"
+                fill
+                sizes="(max-width: 768px) 100vw, 50vw"
+                className="object-cover"
+                priority
               />
             </div>
             <div className="absolute -bottom-4 -left-4 w-24 h-24 bg-orange-600 rounded-full blur-3xl opacity-40" aria-hidden="true" />
@@ -69,11 +85,13 @@ export default function HomePage() {
       <section className="bg-orange-700 text-white py-20 md:py-28 px-6">
         <div className="max-w-6xl mx-auto flex flex-col md:flex-row items-center gap-12">
           <div className="flex-1">
-            <div className="rounded-2xl overflow-hidden shadow-2xl rotate-[-1deg] hover:rotate-0 transition-transform duration-500 motion-reduce:transition-none motion-reduce:rotate-0 border-4 border-orange-800">
-              <img
+            <div className="relative aspect-[3/2] rounded-2xl overflow-hidden shadow-2xl rotate-[-1deg] hover:rotate-0 transition-transform duration-500 motion-reduce:transition-none motion-reduce:rotate-0 border-4 border-orange-800">
+              <Image
                 src="/images/editorial-vinyl.jpg"
                 alt="Person browsing through vinyl records at a market"
-                className="w-full h-auto object-cover"
+                fill
+                sizes="(max-width: 768px) 100vw, 50vw"
+                className="object-cover"
                 loading="lazy"
               />
             </div>
@@ -108,11 +126,13 @@ export default function HomePage() {
       <section className="bg-black text-white py-20 md:py-28 px-6">
         <div className="max-w-6xl mx-auto flex flex-col md:flex-row-reverse items-center gap-12">
           <div className="flex-1">
-            <div className="rounded-2xl overflow-hidden border border-stone-800 hover:border-orange-900/50 transition-colors duration-500">
-              <img
+            <div className="relative aspect-[2/3] rounded-2xl overflow-hidden border border-stone-800 hover:border-orange-900/50 transition-colors duration-500">
+              <Image
                 src="/images/editorial-records.jpg"
                 alt="Colorful vinyl records on album covers"
-                className="w-full h-auto object-cover"
+                fill
+                sizes="(max-width: 768px) 100vw, 50vw"
+                className="object-cover"
                 loading="lazy"
               />
             </div>
@@ -134,7 +154,7 @@ export default function HomePage() {
               voice and release. No extra engineering needed.
             </p>
             <Link
-              href="/contact"
+              href="/about"
               className="inline-block px-6 py-2 bg-orange-600 rounded-full text-sm font-bold hover:bg-orange-500 transition-all hover:scale-105 active:scale-95 focus-visible:ring-2 focus-visible:ring-orange-400 focus-visible:ring-offset-2 focus-visible:ring-offset-black outline-none touch-manipulation"
             >
               Custom Orders
@@ -179,7 +199,7 @@ export default function HomePage() {
 
           {!error && loading ? (
             <div className="flex flex-wrap gap-3 animate-pulse">
-              {[1, 2, 3, 4, 5].map((n) => (
+              {[1, 2, 3, 4].map((n) => (
                 <div key={n} className="inline-flex items-center gap-2 px-3 py-2 rounded-full border border-stone-800 bg-stone-900/40">
                   <div className="w-8 h-8 rounded-full bg-stone-800" />
                   <div className="w-20 h-3 bg-stone-800 rounded" />
@@ -191,7 +211,7 @@ export default function HomePage() {
               <p className="text-stone-500 text-lg">No beats available yet.</p>
               <p className="text-stone-600 text-sm mt-2">Check back soon for new drops.</p>
               <Link 
-                href="/contact" 
+                href="/about" 
                 className="inline-block mt-4 text-orange-500 hover:text-orange-400 text-sm underline focus-visible:ring-2 focus-visible:ring-orange-500 rounded outline-none"
               >
                 Request a custom beat instead
@@ -204,7 +224,7 @@ export default function HomePage() {
                   <BeatChip key={beat.id} beat={beat} />
                 ))}
               </div>
-              {beats.length > 5 && (
+              {beats.length > previewBeats.length && (
                 <div className="mt-8 text-center">
                   <Link
                     href="/beats"
@@ -237,7 +257,7 @@ export default function HomePage() {
           I also take custom orders. Hit me up and let&apos;s cook something unique.
         </p>
         <Link
-          href="/contact"
+          href="/about"
           className="inline-block bg-white text-orange-700 px-8 py-3 rounded-full font-bold hover:bg-orange-100 transition-all hover:scale-105 active:scale-95 focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-orange-700 outline-none touch-manipulation"
         >
           Get In Touch

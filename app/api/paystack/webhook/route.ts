@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verifyWebhookSignature } from "@/lib/paystack";
 import { supabaseAdmin } from "@/lib/supabase-admin";
+import { sendOrderConfirmation } from "@/lib/email";
 
 export const runtime = "nodejs";
 
@@ -33,7 +34,7 @@ export async function POST(req: NextRequest) {
 
       const { data: order } = await supabaseAdmin
         .from("orders")
-        .select("amount, status")
+        .select("amount, status, email, items")
         .eq("reference", reference)
         .single();
 
@@ -59,6 +60,13 @@ export async function POST(req: NextRequest) {
             paystack_data: data,
           })
           .eq("reference", reference);
+
+        // Fire-and-forget: order is already marked paid regardless of
+        // whether the email succeeds — never let a flaky mail send turn
+        // into a failed webhook response (Paystack would just retry it).
+        sendOrderConfirmation(order.email, reference, data.amount / 100, order.items || []).catch((e) =>
+          console.error("[Webhook] Confirmation email failed:", e.message)
+        );
       }
     }
 

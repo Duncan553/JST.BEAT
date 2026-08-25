@@ -21,9 +21,9 @@ export function formatPhone(phone: string): string {
 }
 
 export async function initializePayment({
-  email, amount, phone, reference, metadata = {},
+  email, amount, phone, reference, metadata = {}, subaccount,
 }: {
-  email: string; amount: number; phone: string; reference: string; metadata?: Record<string, any>;
+  email: string; amount: number; phone: string; reference: string; metadata?: Record<string, any>; subaccount?: string;
 }) {
   const formattedPhone = formatPhone(phone);
   const amountInCents = Math.round(amount * 100);
@@ -31,11 +31,44 @@ export async function initializePayment({
     const response = await api.post("/charge", {
       email, amount: amountInCents, currency: "KES", reference, metadata,
       mobile_money: { phone: formattedPhone, provider: "mpesa" },
+      // Only ever set for orders made up entirely of one producer's beats
+      // (see initialize/route.ts) — bearer:subaccount means they absorb
+      // Paystack's processing fee themselves, same as any normal merchant,
+      // since percentage_charge is 0 and they're getting the full amount.
+      ...(subaccount ? { subaccount, bearer: "subaccount" } : {}),
     });
     return {
       success: response.data.status,
       message: response.data.message,
       data: response.data.data,
+      reference,
+    };
+  } catch (error: any) {
+    const paystackError = error.response?.data;
+    throw new Error(paystackError?.message || "Payment initiation failed");
+  }
+}
+
+// Card payments go through Paystack's own hosted checkout page — we send
+// them there with `authorization_url` and never touch a card number
+// ourselves. (Doing card entry on our own form would put us in PCI-DSS
+// scope for no reason; Paystack's popup/redirect keeps that off us.)
+export async function initializeCardPayment({
+  email, amount, reference, metadata = {}, callbackUrl, subaccount,
+}: {
+  email: string; amount: number; reference: string; metadata?: Record<string, any>; callbackUrl: string; subaccount?: string;
+}) {
+  const amountInCents = Math.round(amount * 100);
+  try {
+    const response = await api.post("/transaction/initialize", {
+      email, amount: amountInCents, currency: "KES", reference, metadata,
+      callback_url: callbackUrl,
+      channels: ["card"],
+      ...(subaccount ? { subaccount, bearer: "subaccount" } : {}),
+    });
+    return {
+      success: response.data.status,
+      authorizationUrl: response.data.data.authorization_url as string,
       reference,
     };
   } catch (error: any) {

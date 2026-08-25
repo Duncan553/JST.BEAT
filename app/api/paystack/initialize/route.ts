@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import { initializePayment } from "@/lib/paystack";
+import { initializePayment, initializeCardPayment } from "@/lib/paystack";
 import { supabaseAdmin } from "@/lib/supabase-admin";
+import { rateLimit } from "@/lib/rate-limit";
 
 // Maps the license the customer picked to the DB column that holds its price.
 // We NEVER trust a price the browser sends us — we look it up ourselves.
@@ -12,15 +13,44 @@ const LICENSE_PRICE_COLUMN: Record<string, "price_mp3" | "price_wav" | "price_st
 
 export async function POST(req: NextRequest) {
   try {
+    // General abuse/cost control, per caller.
+    const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || req.headers.get("x-real-ip") || "unknown";
+    const ipLimit = rateLimit(`initialize:${ip}`, 10, 10 * 60 * 1000);
+    if (!ipLimit.success) {
+      return NextResponse.json({ success: false, message: "Too many requests, try again shortly" }, { status: 429 });
+    }
+
     // Intentionally NOT reading `amount` from the body — see LICENSE_PRICE_COLUMN
     // below. The client can't be trusted to say what it should pay.
-    const { email, phone, items } = await req.json();
+    const { email, phone, items, method } = await req.json();
+    const payMethod: "mpesa" | "card" = method === "card" ? "card" : "mpesa";
 
-    if (!email || !phone || !Array.isArray(items) || items.length === 0) {
+    if (!email || !Array.isArray(items) || items.length === 0) {
       return NextResponse.json(
-        { success: false, message: "Email, phone and items are required" },
+        { success: false, message: "Email and items are required" },
         { status: 400 }
       );
+    }
+    // Phone is only needed for the M-Pesa STK push — card goes through
+    // Paystack's own hosted page, which collects what it needs itself.
+    if (payMethod === "mpesa" && !phone) {
+      return NextResponse.json(
+        { success: false, message: "Phone is required for M-Pesa" },
+        { status: 400 }
+      );
+    }
+
+    // This is the one that actually matters: without it, someone could
+    // spam a stranger's phone with M-Pesa STK prompts regardless of how
+    // many IPs they attack from — the phone number itself is the target.
+    if (payMethod === "mpesa") {
+      const phoneLimit = rateLimit(`initialize-phone:${phone}`, 5, 30 * 60 * 1000);
+      if (!phoneLimit.success) {
+        return NextResponse.json(
+          { success: false, message: "Too many payment attempts for this number, try again later" },
+          { status: 429 }
+        );
+      }
     }
 
     const beatIds = [...new Set(items.map((i: any) => i?.beat_id).filter(Boolean))];
@@ -34,10 +64,21 @@ export async function POST(req: NextRequest) {
     // Uses the admin client: after the RLS lockdown, anon can no longer
     // read full_url/prices off the raw `beats` table directly — only this
     // server route (with the service role key) can.
-    const { data: beats, error: beatsError } = await supabaseAdmin
+    let { data: beats, error: beatsError } = await supabaseAdmin
       .from("beats")
-      .select("id, title, price_mp3, price_wav, price_stems")
+      .select("id, title, price_mp3, price_wav, price_stems, producer")
       .in("id", beatIds);
+
+    // Runs until migrations/2026-08-25-add-producer.sql has been applied —
+    // don't let checkout itself go down over a column that isn't there yet.
+    if (beatsError?.code === "42703") {
+      const fallback = await supabaseAdmin
+        .from("beats")
+        .select("id, title, price_mp3, price_wav, price_stems")
+        .in("id", beatIds);
+      beats = (fallback.data || []).map((b) => ({ ...b, producer: null })) as typeof beats;
+      beatsError = fallback.error;
+    }
 
     if (beatsError || !beats) {
       console.error("[API] Could not load beats for pricing:", beatsError?.message);
@@ -50,7 +91,7 @@ export async function POST(req: NextRequest) {
     const beatsById = new Map(beats.map((b) => [b.id, b]));
 
     let amount = 0;
-    const verifiedItems: Array<{ title: string; beat_id: string; license: string; price: number }> = [];
+    const verifiedItems: Array<{ title: string; beat_id: string; license: string; price: number; producer: string | null }> = [];
 
     for (const item of items) {
       const beat = beatsById.get(item?.beat_id);
@@ -77,6 +118,7 @@ export async function POST(req: NextRequest) {
         beat_id: (beat as any).id,
         license: item.license,
         price,
+        producer: (beat as any).producer ?? null,
       });
     }
 
@@ -86,6 +128,12 @@ export async function POST(req: NextRequest) {
         { status: 400 }
       );
     }
+
+    // Only route automatically when EVERY item in the order is tisco
+    // prodz's — a cart mixing both producers stays on manual tracking
+    // (Earnings tab) rather than guessing a fractional split.
+    const isTiscoOnly = verifiedItems.length > 0 && verifiedItems.every((i) => i.producer === "tisco prodz");
+    const subaccount = isTiscoOnly ? process.env.TISCO_SUBACCOUNT_CODE : undefined;
 
     const reference = `JST-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
 
@@ -99,21 +147,38 @@ export async function POST(req: NextRequest) {
       created_at: new Date().toISOString(),
     });
 
-    const result = await initializePayment({
-      email,
-      amount,
-      phone,
-      reference,
-      metadata: {
-        order_id: reference,
-        customer_phone: phone,
-        item_count: verifiedItems.length,
-        business_settlement: "0114256994",
-      },
-    });
+    const metadata = {
+      order_id: reference,
+      customer_phone: phone || null,
+      item_count: verifiedItems.length,
+      business_settlement: "0114256994",
+    };
+
+    if (payMethod === "card") {
+      const origin = req.headers.get("origin") || new URL(req.url).origin;
+      const result = await initializeCardPayment({
+        email,
+        amount,
+        reference,
+        metadata,
+        callbackUrl: `${origin}/cart`,
+        subaccount,
+      });
+
+      return NextResponse.json({
+        success: true,
+        method: "card",
+        authorizationUrl: result.authorizationUrl,
+        reference: result.reference,
+        amount,
+      });
+    }
+
+    const result = await initializePayment({ email, amount, phone, reference, metadata, subaccount });
 
     return NextResponse.json({
       success: true,
+      method: "mpesa",
       message: result.message || "Check your phone for the M-Pesa prompt and enter your PIN.",
       reference: result.reference,
       amount,

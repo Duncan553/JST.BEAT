@@ -11,6 +11,7 @@ export interface Beat {
   price_mp3: number; // legacy, ignored
   price_wav: number;
   price_stems: number;
+  producer: 'jst.dan' | 'tisco prodz';
   tags: string[];
   created_at?: string;
 }

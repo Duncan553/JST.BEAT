@@ -15,7 +15,7 @@ export function Header() {
     { href: '/blog', label: 'Blog' },
     { href: '/store', label: 'Store' },
     { href: '/art-museum', label: 'Art Museum' },
-    { href: '/contact', label: 'Contact' },
+    { href: '/about', label: 'About' },
   ];
 
   return (

@@ -1,6 +1,7 @@
 'use client';
 
 import { useRef, useEffect, useState } from 'react';
+import Image from 'next/image';
 import { usePlayerStore } from '@/stores/usePlayerStore';
 
 export function AudioPlayer() {
@@ -126,10 +127,12 @@ export function AudioPlayer() {
         >
           <div className="absolute -inset-1 rounded-full bg-black/40 blur-sm" />
           <div className="relative w-full h-full rounded-full overflow-hidden border-[2px] border-stone-800 shadow-xl">
-            <img 
-              src={currentBeatCover || '/images/hero-studio.jpg'} 
-              alt="" 
-              className="absolute inset-0 w-full h-full object-cover"
+            <Image
+              src={currentBeatCover || '/images/hero-studio.jpg'}
+              alt=""
+              fill
+              sizes="64px"
+              className="object-cover"
             />
             <div className="absolute inset-0 bg-black/20" />
             <div className="absolute inset-[4px] rounded-full border border-white/5" />

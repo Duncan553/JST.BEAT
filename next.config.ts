@@ -1,6 +1,14 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  images: {
+    // Every cover_art/photo_url in the DB is a Supabase Storage URL — this
+    // is what lets next/image actually optimize them (resize, serve
+    // webp/avif, lazy-load) instead of rejecting them as an unknown host.
+    remotePatterns: [
+      { protocol: 'https', hostname: 'noulpguxufwzlknzhgqd.supabase.co' },
+    ],
+  },
   async headers() {
     return [
       {
