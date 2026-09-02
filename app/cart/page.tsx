@@ -4,6 +4,8 @@ import { useState, useEffect, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { useCartStore } from '@/stores/useCartStore';
 import Link from 'next/link';
+import { useUsdToKes } from '@/hooks/useUsdToKes';
+import { formatUsd, formatKes } from '@/lib/currency';
 
 // Checkout always shows KSh, regardless of the browse-page currency toggle —
 // that's the one currency that's ever actually charged (M-Pesa and card
@@ -21,7 +23,16 @@ export default function CartPage() {
 }
 
 function CartPageInner() {
-  const { items, removeItem, clearCart, getTotal } = useCartStore();
+  const { items, removeItem, clearCart } = useCartStore();
+
+  // Beats are priced in USD; the KSh figure is derived from the same cached
+  // rate /api/paystack/initialize charges with. Store releases are KES-native
+  // (no priceUsd) and pass through untouched.
+  const { kes } = useUsdToKes();
+  const lineKes = (item: { price: number; priceUsd?: number }) =>
+    item.priceUsd ? kes(item.priceUsd) ?? item.price : item.price;
+  const totalKes = items.reduce((sum, i) => sum + lineKes(i), 0);
+  const totalUsdBeats = items.reduce((sum, i) => sum + (i.priceUsd || 0), 0);
   const searchParams = useSearchParams();
   const [mounted, setMounted] = useState(false);
   const [phone, setPhone] = useState('');
@@ -258,7 +269,16 @@ function CartPageInner() {
                   <p className="text-xs text-stone-500">{item.license.toUpperCase()} Lease</p>
                 </div>
                 <div className="flex items-center gap-3 shrink-0">
-                  <span className="font-bold text-orange-100 tabular-nums text-sm">KSh {item.price}</span>
+                  <span className="text-right">
+                    {/* A beat shows its dollar price with the shilling it
+                        converts to; a release only ever has shillings. */}
+                    <span className="block font-bold text-orange-100 tabular-nums text-sm">
+                      {item.priceUsd ? formatUsd(item.priceUsd) : formatKes(item.price)}
+                    </span>
+                    {item.priceUsd && (
+                      <span className="block text-[11px] text-stone-500 tabular-nums">≈ {formatKes(lineKes(item))}</span>
+                    )}
+                  </span>
                   <button onClick={() => handleRemove(item.beat.id, item.license, item.beat.title)} className="text-red-400 text-xs hover:underline focus-visible:ring-2 focus-visible:ring-red-500 rounded outline-none touch-manipulation">
                     Remove
                   </button>
@@ -268,7 +288,14 @@ function CartPageInner() {
           </div>
           <div className="flex justify-between items-center px-5 py-4 bg-stone-900/60 border-t border-stone-800">
             <span className="text-base font-bold text-orange-100">Total</span>
-            <span className="text-lg font-bold text-orange-100 tabular-nums">KSh {getTotal()}</span>
+            <span className="text-right">
+              {/* Charged in shillings — Paystack only takes KES — so that is
+                  the figure shown big. The dollar subtotal is the beats. */}
+              <span className="block text-lg font-bold text-orange-100 tabular-nums">{formatKes(totalKes)}</span>
+              {totalUsdBeats > 0 && (
+                <span className="block text-[11px] text-stone-500 tabular-nums">{formatUsd(totalUsdBeats)} in beats</span>
+              )}
+            </span>
           </div>
         </div>
       )}
@@ -418,8 +445,8 @@ function CartPageInner() {
                   <>
                     <span className="font-bold">{currency === 'KES' && method === 'mpesa' ? 'M' : '💳'}</span>
                     {currency === 'USD'
-                      ? `Pay in USD via card`
-                      : `Pay KSh ${getTotal()} via ${method === 'mpesa' ? 'M-Pesa' : 'Card'}`}
+                      ? `Pay ${formatUsd(totalUsdBeats)} via card`
+                      : `Pay ${formatKes(totalKes)} via ${method === 'mpesa' ? 'M-Pesa' : 'Card'}`}
                   </>
                 )}
               </button>

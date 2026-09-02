@@ -29,7 +29,7 @@ export const useBeatsStore = create<BeatsStore>((set, get) => ({
       // so the public never sees the download link. Security!
       let { data, error } = await supabase
         .from('beats')
-        .select('id, title, bpm, key, genre, cover_art, snippet_url, price_mp3, price_wav, price_stems, producer, tags, created_at')
+        .select('id, title, bpm, key, genre, cover_art, snippet_url, price_mp3, price_wav, price_stems, price_usd_wav, price_usd_stems, producer, tags, created_at')
         .order('created_at', { ascending: false });
 
       // Runs until migrations/2026-08-25-add-producer.sql has been applied
@@ -38,7 +38,7 @@ export const useBeatsStore = create<BeatsStore>((set, get) => ({
       if (error?.code === '42703') {
         const fallback = await supabase
           .from('beats')
-          .select('id, title, bpm, key, genre, cover_art, snippet_url, price_mp3, price_wav, price_stems, tags, created_at')
+          .select('id, title, bpm, key, genre, cover_art, snippet_url, price_mp3, price_wav, price_stems, price_usd_wav, price_usd_stems, tags, created_at')
           .order('created_at', { ascending: false });
         data = (fallback.data || []).map((b) => ({ ...b, producer: 'jst.dan' })) as typeof data;
         error = fallback.error;

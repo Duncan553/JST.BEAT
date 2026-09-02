@@ -9,8 +9,13 @@ export interface Beat {
   full_url?: string;
   stems_url?: string; // ZIP file with individual tracks — optional!
   price_mp3: number; // legacy, ignored
+  // KES snapshots written at upload time. Kept so older read paths work, but
+  // they are NOT the price — they go stale the moment the shilling moves.
   price_wav: number;
   price_stems: number;
+  // The actual price. KES is derived from these at render and at checkout.
+  price_usd_wav: number;
+  price_usd_stems: number;
   producer: 'jst.dan' | 'tisco prodz';
   tags: string[];
   created_at?: string;

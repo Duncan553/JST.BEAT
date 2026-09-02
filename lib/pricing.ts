@@ -61,17 +61,12 @@ export async function getUsdToKes(): Promise<CachedRate> {
   return cache;
 }
 
-/**
- * Converts a USD price to the KES figure a customer is actually charged.
- *
- * Rounds UP to the nearest 50 — $20 x 133 = 2,660 becomes 2,700. Two reasons:
- * a price like "KSh 2,659.60" looks broken, and rounding DOWN would lose
- * money on every single sale.
- */
-export function usdToKes(usd: number, rate: number): number {
-  const raw = usd * rate;
-  return Math.ceil(raw / 50) * 50;
-}
+// The rounding rule itself lives in lib/currency.ts because the browser needs
+// the identical function — a page that rounds differently from checkout shows
+// one number and charges another. Re-exported so server code can keep
+// importing it from here.
+import { usdToKes } from '@/lib/currency';
+export { usdToKes };
 
 /** Both currencies for one USD price, ready to render. */
 export async function priceBoth(usd: number): Promise<{ usd: number; kes: number; rate: number }> {
