@@ -4,187 +4,143 @@ import { rateLimit } from '@/lib/rate-limit';
 import { requireUploader } from '@/lib/auth-server';
 import { createSnippet } from '@/lib/audio-tag';
 import { getUsdToKes, usdToKes } from '@/lib/pricing';
+import { verifyUploaded, publicUrl, rollbackOrphans } from '@/lib/storage-verify';
+import { sanitizeFilename } from '@/lib/upload-kinds';
 import crypto from 'crypto';
 
-const ALLOWED_AUDIO = ['audio/mpeg', 'audio/wav', 'audio/x-wav', 'audio/mp3', 'audio/wave'];
-const ALLOWED_IMAGES = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp', 'image/heic'];
-const ALLOWED_ZIP = ['application/zip', 'application/x-zip-compressed'];
-const MAX_AUDIO = 50 * 1024 * 1024;      // 50MB — a full WAV track can easily be 30-40MB+
-const MAX_IMAGE = 5 * 1024 * 1024;       // 5MB
-const MAX_STEMS = 50 * 1024 * 1024;      // 50MB for ZIP
+// FINALIZE step of a beat upload. The audio, cover and stems are ALREADY in
+// Storage — the browser put them there itself using a token from
+// /api/uploads/sign. All that arrives here is a small JSON body of paths.
+//
+// This route used to take the files as multipart. It could never work on
+// Vercel: request bodies over ~4.5MB are rejected at the edge with a plain
+// text 413 before the handler runs, and a real WAV is 30-40MB.
 
-function sanitizeFilename(name: string): string {
-  return name.replace(/[^a-zA-Z0-9.-]/g, '_').replace(/_{2,}/g, '_');
-}
+export const maxDuration = 300; // snippet encoding on a long WAV is not instant
 
 export async function POST(req: NextRequest) {
-  // Only jst.dan and tisco prodz may post beats — everything below this
-  // uses the service-role client, which bypasses RLS entirely, so this
-  // check is the ONLY thing standing between this route and the public.
+  // Only jst.dan and tisco prodz may post beats — everything below this uses
+  // the service-role client, which bypasses RLS entirely, so this check is the
+  // ONLY thing standing between this route and the public.
   const producer = await requireUploader(req);
   if (!producer) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  // Rate limit: 10 uploads per IP per hour
   const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || req.headers.get('x-real-ip') || 'unknown';
-  const limit = rateLimit(`upload:${ip}`, 10, 60 * 60 * 1000);
-  if (!limit.success) {
+  if (!rateLimit(`upload:${ip}`, 10, 60 * 60 * 1000).success) {
     return NextResponse.json({ error: 'Rate limited' }, { status: 429 });
   }
 
-  // Declared out here so the catch block below can roll these back.
-  const written: Array<{ bucket: string; path: string }> = [];
+  // Everything this request is responsible for, so a failure can undo it.
+  // Includes the client-uploaded objects: if the row never gets written they
+  // are orphans nobody will ever find, and you pay to store them forever.
+  const owned: Array<{ bucket: string; path: string }> = [];
 
   try {
-    const formData = await req.formData();
-    const title = String(formData.get('title') || '').trim();
-    const bpm = parseInt(String(formData.get('bpm')), 10) || 0;
-    const key = String(formData.get('key') || '').trim();
-    const genre = String(formData.get('genre') || '').trim();
+    const body = await req.json();
+
+    const title = String(body.title || '').trim();
+    const bpm = parseInt(String(body.bpm), 10) || 0;
+    const key = String(body.key || '').trim();
+    const genre = String(body.genre || '').trim();
     // Beats are priced in USD. The legacy KES fields are still accepted so an
     // older client doesn't break, but USD is what gets stored as the truth.
-    const price_usd_wav = parseFloat(String(formData.get('price_usd_wav'))) || 0;
-    const price_usd_stems = parseFloat(String(formData.get('price_usd_stems'))) || 0;
-    const price_wav = parseFloat(String(formData.get('price_wav'))) || 0;
-    const price_stems = parseFloat(String(formData.get('price_stems'))) || 0;
-    const tagsRaw = String(formData.get('tags') || '').trim();
-    const audio = formData.get('audio') as File | null;
-    const snippetFile = formData.get('snippet') as File | null;
-    const cover = formData.get('cover') as File | null;
-    const stemsZip = formData.get('stems') as File | null;
+    const price_usd_wav = parseFloat(String(body.price_usd_wav)) || 0;
+    const price_usd_stems = parseFloat(String(body.price_usd_stems)) || 0;
+    const price_wav = parseFloat(String(body.price_wav)) || 0;
+    const price_stems = parseFloat(String(body.price_stems)) || 0;
+    const tagsRaw = String(body.tags || '').trim();
 
-    // Validation
-    if (!title || !key || !genre || !audio || !cover) {
+    const audioPathIn = String(body.audio_path || '');
+    const coverPathIn = String(body.cover_path || '');
+    const snippetPathIn = body.snippet_path ? String(body.snippet_path) : null;
+    const stemsPathIn = body.stems_path ? String(body.stems_path) : null;
+
+    if (!title || !key || !genre || !audioPathIn || !coverPathIn) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
     }
     if (title.length > 120 || key.length > 10 || genre.length > 40) {
       return NextResponse.json({ error: 'Field too long' }, { status: 400 });
     }
-    if (!ALLOWED_AUDIO.includes(audio.type) || audio.size > MAX_AUDIO) {
-      console.error(`[Upload] Rejected audio: type="${audio.type}", size=${audio.size}`);
-      return NextResponse.json({ error: `Invalid audio file (must be MP3/WAV, under 50MB). Got: ${audio.type}` }, { status: 400 });
-    }
-    // Tagged snippet is optional — if they don't upload one, we auto-trim
-    // the full track instead, both capped the same way (see lib/audio-tag.ts).
-    if (snippetFile && (!ALLOWED_AUDIO.includes(snippetFile.type) || snippetFile.size > MAX_AUDIO)) {
-      console.error(`[Upload] Rejected snippet: type="${snippetFile.type}", size=${snippetFile.size}`);
-      return NextResponse.json({ error: `Invalid snippet file (must be MP3/WAV, under 50MB). Got: ${snippetFile.type}` }, { status: 400 });
-    }
-    if (!ALLOWED_IMAGES.includes(cover.type) || cover.size > MAX_IMAGE) {
-      console.error(`[Upload] Rejected image: type="${cover.type}", size=${cover.size}`);
-      return NextResponse.json({ error: `Invalid cover image (must be JPG/PNG/WEBP, under 5MB). Got: ${cover.type}` }, { status: 400 });
-    }
-
-    // Stems ZIP is optional, but if provided must be valid
-    if (stemsZip) {
-      if (!ALLOWED_ZIP.includes(stemsZip.type) || stemsZip.size > MAX_STEMS) {
-        console.error(`[Upload] Rejected stems: type="${stemsZip.type}", size=${stemsZip.size}`);
-        return NextResponse.json({ error: `Invalid stems file (must be ZIP, under 50MB). Got: ${stemsZip.type}` }, { status: 400 });
-      }
-    }
-
-    // A WAV price is required in one currency or the other.
     if (price_usd_wav <= 0 && price_wav <= 0) {
       return NextResponse.json({ error: 'WAV price must be greater than 0' }, { status: 400 });
     }
 
-    // Sanitized filenames
-    const safeAudioName = sanitizeFilename(audio.name);
-    const safeCoverName = sanitizeFilename(cover.name);
-    const audioPath = `beats/${Date.now()}-${crypto.randomUUID()}-${safeAudioName}`;
-    const coverPath = `covers/${Date.now()}-${crypto.randomUUID()}-${safeCoverName}`;
-    const fullPath = `full/${Date.now()}-${crypto.randomUUID()}-${safeAudioName}`;
+    // Confirm each uploaded object actually exists and obeys its rule. The
+    // client picked the file, so the server re-checks type and size here —
+    // this is the validation the old multipart route did on the File objects.
+    const full = await verifyUploaded('beat-audio', audioPathIn);
+    owned.push({ bucket: full.bucket, path: full.path });
 
-    // Preview copy gets the producer tag mixed in (protects it from being
-    // ripped and resold as the full track); the full/private copies below
-    // stay untouched originals — that's what the buyer is actually paying
-    // for. If they uploaded their own snippet clip, that's what plays —
-    // otherwise it falls back to auto-trimming the first 45s of the track.
-    const snippet = snippetFile
-      ? await createSnippet(Buffer.from(await snippetFile.arrayBuffer()), sanitizeFilename(snippetFile.name), producer)
-      : await createSnippet(Buffer.from(await audio.arrayBuffer()), safeAudioName, producer);
+    const cover = await verifyUploaded('beat-cover', coverPathIn);
+    owned.push({ bucket: cover.bucket, path: cover.path });
 
-    // Uploads one file and records it, so a later failure can undo it.
-    const put = async (bucket: string, path: string, body: Blob | Buffer, contentType: string) => {
-      const { error } = await supabaseAdmin.storage
-        .from(bucket).upload(path, body, { contentType, upsert: false });
-      if (error) throw error;
-      written.push({ bucket, path });
-    };
+    const stems = stemsPathIn ? await verifyUploaded('beat-stems', stemsPathIn) : null;
+    if (stems) owned.push({ bucket: stems.bucket, path: stems.path });
 
-    // Upload preview to PUBLIC bucket
-    await put('beats-public', audioPath, snippet, audio.type);
+    const snippetSrc = snippetPathIn ? await verifyUploaded('beat-snippet', snippetPathIn) : null;
+    if (snippetSrc) owned.push({ bucket: snippetSrc.bucket, path: snippetSrc.path });
 
-    // Upload cover to PUBLIC bucket
-    await put('beats-public', coverPath, cover, cover.type);
+    // Build the PUBLIC preview. The producer's own clip is used if they gave
+    // one, otherwise the full track is auto-trimmed — either way it gets the
+    // tag mixed in and is capped (see lib/audio-tag.ts). The private copy is
+    // never touched: that untagged master is what the buyer is paying for.
+    const source = snippetSrc ?? full;
+    const { data: blob, error: dlErr } = await supabaseAdmin.storage
+      .from(source.bucket).download(source.path);
+    if (dlErr || !blob) throw new Error(`Could not read the uploaded audio back: ${dlErr?.message}`);
 
-    // Upload FULL beat to PRIVATE bucket
-    await put('beats-private', fullPath, audio, audio.type);
+    const srcName = sanitizeFilename(source.path.split('/').pop() || 'beat.mp3');
+    const snippetBuffer = await createSnippet(Buffer.from(await blob.arrayBuffer()), srcName, producer);
 
-    // Upload stems ZIP to PRIVATE bucket (optional)
-    let stemsUrl: string | null = null;
-    if (stemsZip) {
-      const safeStemsName = sanitizeFilename(stemsZip.name);
-      const stemsPath = `stems/${Date.now()}-${crypto.randomUUID()}-${safeStemsName}`;
-      await put('beats-private', stemsPath, stemsZip, stemsZip.type);
-
-      const { data: stemsData } = supabaseAdmin.storage.from('beats-private').getPublicUrl(stemsPath);
-      stemsUrl = stemsData.publicUrl;
-    }
-
-    // Get URLs
-    const { data: audioUrl } = supabaseAdmin.storage.from('beats-public').getPublicUrl(audioPath);
-    const { data: coverUrl } = supabaseAdmin.storage.from('beats-public').getPublicUrl(coverPath);
-    const { data: fullUrl } = supabaseAdmin.storage.from('beats-private').getPublicUrl(fullPath);
+    const snippetPath = `beats/${Date.now()}-${crypto.randomUUID()}-${srcName}`;
+    const { error: upErr } = await supabaseAdmin.storage
+      .from('beats-public')
+      .upload(snippetPath, snippetBuffer, { contentType: full.type || 'audio/mpeg', upsert: false });
+    if (upErr) throw upErr;
+    owned.push({ bucket: 'beats-public', path: snippetPath });
 
     const tags = tagsRaw
-      ? tagsRaw.split(',').map((t) => t.trim()).filter((t) => t.length > 0 && t.length <= 30)
+      ? tagsRaw.split(',').map((t: string) => t.trim()).filter((t: string) => t.length > 0 && t.length <= 30)
       : [];
 
-    // KES is derived from USD at request time, never stored as a second
-    // source of truth. The legacy price_wav/price_stems columns are filled
-    // with a snapshot only so older read paths keep working.
+    // KES is derived from USD at request time, never stored as a second source
+    // of truth. The legacy price_wav/price_stems columns get a snapshot only so
+    // older read paths keep working.
     const { rate } = await getUsdToKes();
     const usdWav = price_usd_wav > 0 ? price_usd_wav : price_wav / rate;
     const usdStems = price_usd_stems > 0 ? price_usd_stems : price_stems / rate;
 
     const beatData: any = {
       title, bpm, key, genre, producer,
-      cover_art: coverUrl.publicUrl,
-      snippet_url: audioUrl.publicUrl,
-      full_url: fullUrl.publicUrl,
+      cover_art: publicUrl(cover.bucket, cover.path),
+      snippet_url: publicUrl('beats-public', snippetPath),
+      full_url: publicUrl(full.bucket, full.path),
       price_usd_wav: Number(usdWav.toFixed(2)),
       price_usd_stems: Number(usdStems.toFixed(2)),
       price_wav: usdToKes(usdWav, rate),
       price_stems: usdStems > 0 ? usdToKes(usdStems, rate) : 0,
       tags,
     };
-
-    // Only add stems_url if a ZIP was uploaded
-    if (stemsUrl) {
-      beatData.stems_url = stemsUrl;
-    }
+    if (stems) beatData.stems_url = publicUrl(stems.bucket, stems.path);
 
     const { data: inserted, error: dbErr } = await supabaseAdmin
       .from('beats').insert(beatData).select().single();
     if (dbErr) throw dbErr;
 
+    // The producer's raw clip was only ever an ingredient for the tagged
+    // preview — nothing references it, so don't keep paying to store it.
+    if (snippetSrc) {
+      await supabaseAdmin.storage.from(snippetSrc.bucket).remove([snippetSrc.path]);
+    }
+
     return NextResponse.json({ success: true, beat: inserted });
   } catch (err: any) {
     console.error('Upload error:', err.message);
-
-    // Roll back anything already in storage. A half-finished upload used to
-    // leave the audio, cover, full track and stems behind with no DB row
-    // pointing at them — invisible junk you keep paying to store.
-    for (const { bucket, path } of written) {
-      const { error } = await supabaseAdmin.storage.from(bucket).remove([path]);
-      if (error) console.error(`[Upload] Could not roll back ${bucket}/${path}:`, error.message);
-    }
-
-    // Send the real reason back. This used to be a flat "Upload failed",
-    // which is why a missing `producer` column looked like a mystery for
-    // weeks — the actual error never left the server.
+    // Undo anything this upload put in storage, but never a file a live row
+    // still points at (see rollbackOrphans).
+    await rollbackOrphans(owned);
     return NextResponse.json({ error: err.message || 'Upload failed' }, { status: 500 });
   }
 }

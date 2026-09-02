@@ -2,21 +2,16 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase-admin';
 import { requireUploaderInfo } from '@/lib/auth-server';
 import { rateLimit } from '@/lib/rate-limit';
-import crypto from 'crypto';
+import { verifyUploaded, publicUrl } from '@/lib/storage-verify';
 
 // Blog posts — mainly album reviews, scored out of 10.
 //
 // POST   creates a post
 // PATCH  updates one (pass `id`)
 //
-// Both take multipart form data because a post can carry cover artwork.
-
-const ALLOWED_IMAGES = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'];
-const MAX_IMAGE = 5 * 1024 * 1024;
-
-function sanitizeFilename(name: string): string {
-  return name.replace(/[^a-zA-Z0-9.-]/g, '_').replace(/_{2,}/g, '_');
-}
+// Both take JSON. A cover image is uploaded by the browser straight to Storage
+// first (via /api/uploads/sign) and only its path is sent here — the old
+// multipart version died on Vercel's ~4.5MB request-body cap.
 
 // "Burna Boy — Love, Damini" -> "burna-boy-love-damini"
 // Must match the CHECK constraint on posts.slug: ^[a-z0-9]+(-[a-z0-9]+)*$
@@ -30,26 +25,22 @@ export function slugify(input: string): string {
     .slice(0, 80);
 }
 
-async function uploadCover(cover: File): Promise<string> {
-  const path = `blog-covers/${Date.now()}-${crypto.randomUUID()}-${sanitizeFilename(cover.name)}`;
-  const { error } = await supabaseAdmin.storage
-    .from('beats-public')
-    .upload(path, cover, { contentType: cover.type, upsert: false });
-  if (error) throw error;
-  const { data } = supabaseAdmin.storage.from('beats-public').getPublicUrl(path);
-  return data.publicUrl;
+/** Confirms a browser-uploaded cover really exists, then turns it into a URL. */
+async function coverUrlFrom(path: string): Promise<string> {
+  const cover = await verifyUploaded('blog-cover', path);
+  return publicUrl(cover.bucket, cover.path);
 }
 
 // Shared field parsing + validation for create and update.
-function readFields(formData: FormData) {
-  const title = String(formData.get('title') || '').trim();
-  const body = String(formData.get('body') || '').trim();
-  const albumArtist = String(formData.get('album_artist') || '').trim();
-  const albumTitle = String(formData.get('album_title') || '').trim();
-  const standoutTrack = String(formData.get('standout_track') || '').trim();
-  const standoutProducer = String(formData.get('standout_producer') || '').trim();
-  const ratingRaw = String(formData.get('rating') || '').trim();
-  const published = String(formData.get('published') || 'false') === 'true';
+function readFields(input: Record<string, any>) {
+  const title = String(input.title || '').trim();
+  const body = String(input.body || '').trim();
+  const albumArtist = String(input.album_artist || '').trim();
+  const albumTitle = String(input.album_title || '').trim();
+  const standoutTrack = String(input.standout_track || '').trim();
+  const standoutProducer = String(input.standout_producer || '').trim();
+  const ratingRaw = String(input.rating ?? '').trim();
+  const published = String(input.published ?? 'false') === 'true';
 
   if (title.length > 200) return { error: 'Title is too long (200 max)' };
   if (albumArtist.length > 200 || albumTitle.length > 200) {
@@ -83,8 +74,8 @@ export async function POST(req: NextRequest) {
   if (!limit.success) return NextResponse.json({ error: 'Rate limited' }, { status: 429 });
 
   try {
-    const formData = await req.formData();
-    const fields = readFields(formData);
+    const input = await req.json();
+    const fields = readFields(input);
     if ('error' in fields) return NextResponse.json({ error: fields.error }, { status: 400 });
     const { title, body, albumArtist, albumTitle, standoutTrack, standoutProducer, rating, published } = fields;
 
@@ -93,23 +84,13 @@ export async function POST(req: NextRequest) {
     }
 
     // Slug can be supplied, otherwise derived from the title.
-    const supplied = String(formData.get('slug') || '').trim();
+    const supplied = String(input.slug || '').trim();
     const slug = slugify(supplied || title);
     if (!slug) {
       return NextResponse.json({ error: 'Could not build a URL from that title' }, { status: 400 });
     }
 
-    const cover = formData.get('cover') as File | null;
-    let coverUrl: string | null = null;
-    if (cover && cover.size > 0) {
-      if (!ALLOWED_IMAGES.includes(cover.type) || cover.size > MAX_IMAGE) {
-        return NextResponse.json(
-          { error: `Invalid cover (JPG/PNG/WEBP, under 5MB). Got: ${cover.type}` },
-          { status: 400 }
-        );
-      }
-      coverUrl = await uploadCover(cover);
-    }
+    const coverUrl = input.cover_path ? await coverUrlFrom(String(input.cover_path)) : null;
 
     const { data, error } = await supabaseAdmin
       .from('posts')
@@ -150,8 +131,8 @@ export async function PATCH(req: NextRequest) {
   if (!uploader) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   try {
-    const formData = await req.formData();
-    const id = String(formData.get('id') || '');
+    const input = await req.json();
+    const id = String(input.id || '');
     if (!id) return NextResponse.json({ error: 'id is required' }, { status: 400 });
 
     // You may only edit your own posts.
@@ -162,7 +143,7 @@ export async function PATCH(req: NextRequest) {
       return NextResponse.json({ error: 'That post belongs to another producer' }, { status: 403 });
     }
 
-    const fields = readFields(formData);
+    const fields = readFields(input);
     if ('error' in fields) return NextResponse.json({ error: fields.error }, { status: 400 });
     const { title, body, albumArtist, albumTitle, standoutTrack, standoutProducer, rating, published } = fields;
 
@@ -178,18 +159,13 @@ export async function PATCH(req: NextRequest) {
       updated_at: new Date().toISOString(),
     };
 
-    const suppliedSlug = String(formData.get('slug') || '').trim();
+    const suppliedSlug = String(input.slug || '').trim();
     if (suppliedSlug) updates.slug = slugify(suppliedSlug);
 
-    const cover = formData.get('cover') as File | null;
-    if (cover && cover.size > 0) {
-      if (!ALLOWED_IMAGES.includes(cover.type) || cover.size > MAX_IMAGE) {
-        return NextResponse.json(
-          { error: `Invalid cover (JPG/PNG/WEBP, under 5MB). Got: ${cover.type}` },
-          { status: 400 }
-        );
-      }
-      updates.cover_art = await uploadCover(cover);
+    // Only replace the artwork if a new one was uploaded — leaving cover_path
+    // out of the request keeps the existing image.
+    if (input.cover_path) {
+      updates.cover_art = await coverUrlFrom(String(input.cover_path));
     }
 
     const { data, error } = await supabaseAdmin

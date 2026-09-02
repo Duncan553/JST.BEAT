@@ -2,14 +2,11 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase-admin';
 import { requireUploaderInfo } from '@/lib/auth-server';
 import { rateLimit } from '@/lib/rate-limit';
-import crypto from 'crypto';
+import { verifyUploaded, publicUrl } from '@/lib/storage-verify';
 
-const ALLOWED_IMAGES = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'];
-const MAX_PHOTO = 5 * 1024 * 1024; // 5MB
-
-function sanitizeFilename(name: string): string {
-  return name.replace(/[^a-zA-Z0-9.-]/g, '_').replace(/_{2,}/g, '_');
-}
+// JSON only. If a new profile photo is being set, the browser has already put
+// it in Storage itself (/api/uploads/sign) and sends just the path — files
+// don't fit through Vercel's ~4.5MB request-body cap.
 
 // youtube is the only field rendered as a raw `href` (the others always
 // get concatenated onto a fixed https://... prefix, so they can't carry a
@@ -37,14 +34,14 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const formData = await req.formData();
-    const photo = formData.get('photo') as File | null;
-    const fullName = String(formData.get('full_name') || '').trim().slice(0, 100);
-    const whatsapp = String(formData.get('whatsapp') || '').replace(/\D/g, '').slice(0, 15);
-    const instagram = String(formData.get('instagram') || '').trim().replace(/^@/, '').slice(0, 40);
-    const tiktok = String(formData.get('tiktok') || '').trim().replace(/^@/, '').slice(0, 40);
-    const twitter = String(formData.get('twitter') || '').trim().replace(/^@/, '').slice(0, 40);
-    const youtubeRaw = String(formData.get('youtube') || '').trim().slice(0, 200);
+    const input = await req.json();
+    const photoPath = input.photo_path ? String(input.photo_path) : null;
+    const fullName = String(input.full_name || '').trim().slice(0, 100);
+    const whatsapp = String(input.whatsapp || '').replace(/\D/g, '').slice(0, 15);
+    const instagram = String(input.instagram || '').trim().replace(/^@/, '').slice(0, 40);
+    const tiktok = String(input.tiktok || '').trim().replace(/^@/, '').slice(0, 40);
+    const twitter = String(input.twitter || '').trim().replace(/^@/, '').slice(0, 40);
+    const youtubeRaw = String(input.youtube || '').trim().slice(0, 200);
     if (youtubeRaw && !isSafeHttpUrl(youtubeRaw)) {
       return NextResponse.json({ error: 'YouTube link must be a valid http(s) URL' }, { status: 400 });
     }
@@ -62,21 +59,10 @@ export async function POST(req: NextRequest) {
       updated_at: new Date().toISOString(),
     };
 
-    if (photo && photo.size > 0) {
-      if (!ALLOWED_IMAGES.includes(photo.type) || photo.size > MAX_PHOTO) {
-        return NextResponse.json(
-          { error: `Invalid photo (must be JPG/PNG/WEBP, under 5MB). Got: ${photo.type}` },
-          { status: 400 }
-        );
-      }
-      const path = `producer-photos/${Date.now()}-${crypto.randomUUID()}-${sanitizeFilename(photo.name)}`;
-      const { error: uploadErr } = await supabaseAdmin.storage
-        .from('beats-public')
-        .upload(path, photo, { contentType: photo.type, upsert: false });
-      if (uploadErr) throw uploadErr;
-
-      const { data: urlData } = supabaseAdmin.storage.from('beats-public').getPublicUrl(path);
-      updates.photo_url = urlData.publicUrl;
+    // No photo_path means "keep the photo you already have".
+    if (photoPath) {
+      const photo = await verifyUploaded('producer-photo', photoPath);
+      updates.photo_url = publicUrl(photo.bucket, photo.path);
     }
 
     const { data, error } = await supabaseAdmin
