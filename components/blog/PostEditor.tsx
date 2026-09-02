@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { supabase } from '@/lib/supabase';
+import { uploadDirect, apiPost } from '@/lib/client-upload';
 
 export type Post = {
   id?: string;
@@ -84,30 +84,32 @@ export function PostEditor({
     setBusy(true);
     setMessage('');
     try {
-      const { data: sessionData } = await supabase.auth.getSession();
-      const token = sessionData.session?.access_token;
-      if (!token) throw new Error('Not logged in');
+      // Artwork goes straight to Storage; the post itself is plain JSON. A
+      // multipart post with the image inline used to die on Vercel's ~4.5MB
+      // request-body cap and came back as unparseable plain text.
+      let cover_path: string | undefined;
+      if (cover) {
+        setMessage('Uploading artwork...');
+        cover_path = await uploadDirect('blog-cover', cover, (pct) => setMessage(`Uploading artwork ${pct}%`));
+      }
 
-      const fd = new FormData();
-      if (editing?.id) fd.append('id', editing.id);
-      fd.append('title', post.title.trim());
-      fd.append('body', post.body.trim());
-      fd.append('album_artist', (post.album_artist ?? '').trim());
-      fd.append('album_title', (post.album_title ?? '').trim());
-      fd.append('standout_track', (post.standout_track ?? '').trim());
-      fd.append('standout_producer', (post.standout_producer ?? '').trim());
-      fd.append('rating', post.rating === null || post.rating === undefined ? '' : String(post.rating));
-      fd.append('published', String(publish));
-      if (slugOverride.trim()) fd.append('slug', slugOverride.trim());
-      if (cover) fd.append('cover', cover);
-
-      const res = await fetch('/api/blog/posts', {
-        method: editing?.id ? 'PATCH' : 'POST',
-        headers: { Authorization: `Bearer ${token}` },
-        body: fd,
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Could not save');
+      await apiPost(
+        '/api/blog/posts',
+        {
+          id: editing?.id,
+          title: post.title.trim(),
+          body: post.body.trim(),
+          album_artist: (post.album_artist ?? '').trim(),
+          album_title: (post.album_title ?? '').trim(),
+          standout_track: (post.standout_track ?? '').trim(),
+          standout_producer: (post.standout_producer ?? '').trim(),
+          rating: post.rating === null || post.rating === undefined ? '' : String(post.rating),
+          published: String(publish),
+          slug: slugOverride.trim() || undefined,
+          cover_path,
+        },
+        editing?.id ? 'PATCH' : 'POST'
+      );
 
       setMessage(publish ? 'Published.' : 'Saved as a draft.');
       if (!editing?.id) { setPost(EMPTY); setSlugOverride(''); setCover(null); setCoverPreview(''); }

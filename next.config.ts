@@ -1,6 +1,16 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  // Snippet/preview encoding shells out to the ffmpeg binary and reads the
+  // producer tags off disk. Next only ships files it can SEE being imported —
+  // a path resolved at runtime is invisible to it, so on Vercel the binary and
+  // the tags would simply not be in the bundle and every upload would die with
+  // `spawn ENOENT`. This tells the tracer to include them for the two routes
+  // that actually run ffmpeg.
+  outputFileTracingIncludes: {
+    '/api/beats/upload': ['./node_modules/ffmpeg-static/ffmpeg', './assets/tags/**'],
+    '/api/store/tracks': ['./node_modules/ffmpeg-static/ffmpeg'],
+  },
   images: {
     // Every cover_art/photo_url in the DB is a Supabase Storage URL — this
     // is what lets next/image actually optimize them (resize, serve

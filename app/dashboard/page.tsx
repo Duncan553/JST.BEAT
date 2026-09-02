@@ -9,6 +9,7 @@ import { UploadForm } from '@/components/upload/UploadForm';
 import { ReleaseUploadForm } from '@/components/store/ReleaseUploadForm';
 import { PostEditor } from '@/components/blog/PostEditor';
 import { supabase } from '@/lib/supabase';
+import { uploadDirect, apiPost } from '@/lib/client-upload';
 import { Beat } from '@/types/beat';
 
 type Tab = 'beats' | 'store' | 'blog' | 'art' | 'earnings' | 'profile';
@@ -287,26 +288,23 @@ export default function DashboardPage() {
     setProfileMessage('');
 
     try {
-      const { data: sessionData } = await supabase.auth.getSession();
-      const token = sessionData.session?.access_token;
-      if (!token) throw new Error('Not logged in');
+      // A new photo (if any) goes to Storage first; the profile save itself is
+      // small JSON. Leaving photo_path out means "keep the current photo".
+      let photo_path: string | undefined;
+      if (profilePhoto) {
+        setProfileMessage('Uploading photo...');
+        photo_path = await uploadDirect('producer-photo', profilePhoto);
+      }
 
-      const formData = new FormData();
-      if (profilePhoto) formData.append('photo', profilePhoto);
-      formData.append('full_name', fullName);
-      formData.append('whatsapp', socials.whatsapp);
-      formData.append('instagram', socials.instagram);
-      formData.append('tiktok', socials.tiktok);
-      formData.append('twitter', socials.twitter);
-      formData.append('youtube', socials.youtube);
-
-      const res = await fetch('/api/producers/update', {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${token}` },
-        body: formData,
+      const data = await apiPost<{ producer?: { photo_url?: string } }>('/api/producers/update', {
+        photo_path,
+        full_name: fullName,
+        whatsapp: socials.whatsapp,
+        instagram: socials.instagram,
+        tiktok: socials.tiktok,
+        twitter: socials.twitter,
+        youtube: socials.youtube,
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Update failed');
 
       if (data.producer?.photo_url) setProfilePhotoUrl(data.producer.photo_url);
       setProfilePhoto(null);

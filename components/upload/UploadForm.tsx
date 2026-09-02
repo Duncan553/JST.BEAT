@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useBeatsStore } from '@/stores/useBeatsStore';
-import { supabase } from '@/lib/supabase';
+import { uploadDirect, apiPost } from '@/lib/client-upload';
 
 export function UploadForm() {
   const { addBeat } = useBeatsStore();
@@ -19,6 +19,9 @@ export function UploadForm() {
   const [stemsFile, setStemsFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
   const [message, setMessage] = useState('');
+  // What the browser is currently pushing to Storage, and how far along.
+  // A 40MB WAV on mobile data takes minutes — without this the form looks dead.
+  const [progress, setProgress] = useState<{ label: string; percent: number } | null>(null);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -31,44 +34,48 @@ export function UploadForm() {
     setMessage('');
 
     try {
-      const formData = new FormData();
-      formData.append('title', title.trim());
-      formData.append('bpm', bpm);
-      formData.append('key', key.trim());
-      formData.append('genre', genre.trim());
-      // Beats are priced in USD, full stop. The KES a Kenyan buyer pays is
-      // derived server-side from a cached rate (lib/pricing.ts) — there is no
-      // second price to keep in sync, and Paystack still only ever sees KES.
-      formData.append('price_usd_wav', priceWav);
-      formData.append('price_usd_stems', priceStems || '0');
-      formData.append('tags', tags.trim());
-      formData.append('audio', audioFile);
+      // STEP 1 — the files go straight to Supabase Storage from here, one at a
+      // time. They never touch our API: Vercel rejects any request body over
+      // ~4.5MB with a plain-text 413 before our route even runs, which is why
+      // posting the WAV through /api/beats/upload could never work in prod.
+      const track = (label: string) => (p: number) => setProgress({ label, percent: p });
+
+      setProgress({ label: 'Uploading beat', percent: 0 });
+      const audio_path = await uploadDirect('beat-audio', audioFile, track('Uploading beat'));
+
+      setProgress({ label: 'Uploading cover art', percent: 0 });
+      const cover_path = await uploadDirect('beat-cover', coverFile, track('Uploading cover art'));
+
+      let snippet_path: string | undefined;
       if (snippetFile) {
-        formData.append('snippet', snippetFile);
+        setProgress({ label: 'Uploading snippet', percent: 0 });
+        snippet_path = await uploadDirect('beat-snippet', snippetFile, track('Uploading snippet'));
       }
-      formData.append('cover', coverFile);
+
+      let stems_path: string | undefined;
       if (stemsFile) {
-        formData.append('stems', stemsFile);
+        setProgress({ label: 'Uploading stems', percent: 0 });
+        stems_path = await uploadDirect('beat-stems', stemsFile, track('Uploading stems'));
       }
 
-      // Server needs proof of who's uploading — it can't read our session
-      // itself (stored in localStorage, not a cookie), so we hand it the
-      // access token and it verifies that with Supabase directly.
-      const { data: sessionData } = await supabase.auth.getSession();
-      const token = sessionData.session?.access_token;
-      if (!token) throw new Error('Not logged in');
-
-      const res = await fetch('/api/beats/upload', {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${token}` },
-        body: formData,
+      // STEP 2 — a few hundred bytes of JSON telling the server what landed
+      // where. The server verifies each object, tags the preview and writes
+      // the row. Beats are priced in USD, full stop; the KES a Kenyan buyer
+      // pays is derived server-side from a cached rate (lib/pricing.ts).
+      setProgress({ label: 'Tagging preview and saving', percent: 100 });
+      const data = await apiPost<{ beat?: any }>('/api/beats/upload', {
+        title: title.trim(),
+        bpm,
+        key: key.trim(),
+        genre: genre.trim(),
+        price_usd_wav: priceWav,
+        price_usd_stems: priceStems || '0',
+        tags: tags.trim(),
+        audio_path,
+        cover_path,
+        snippet_path,
+        stems_path,
       });
-
-      const data = await res.json();
-
-      if (!res.ok) {
-        throw new Error(data.error || 'Upload failed');
-      }
 
       // Add to global store so home page sees it immediately
       if (data.beat) addBeat(data.beat);
@@ -88,6 +95,7 @@ export function UploadForm() {
       setMessage(`Error: ${err.message}`);
     } finally {
       setUploading(false);
+      setProgress(null);
     }
   };
 
@@ -97,6 +105,19 @@ export function UploadForm() {
       {message && (
         <div className={`p-3 rounded mb-4 ${message.includes('Error') ? 'bg-red-950/40 border border-red-900/30 text-red-400' : 'bg-green-950/40 border border-green-900/30 text-green-400'}`}>
           {message}
+        </div>
+      )}
+      {progress && (
+        <div className="mb-4">
+          <div className="flex justify-between text-sm text-stone-400 mb-1">
+            <span>{progress.label}</span>
+            <span>{progress.percent}%</span>
+          </div>
+          {/* Width is driven straight off the XHR upload progress event in
+              lib/client-upload.ts — real bytes, not a fake animation. */}
+          <div className="h-2 bg-stone-800 rounded overflow-hidden">
+            <div className="h-full bg-orange-500 transition-all duration-200" style={{ width: `${progress.percent}%` }} />
+          </div>
         </div>
       )}
       <form onSubmit={handleSubmit} className="space-y-4">

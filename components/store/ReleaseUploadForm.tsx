@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { supabase } from '@/lib/supabase';
+import { uploadDirect, apiPost } from '@/lib/client-upload';
 
 type TrackRow = {
   file: File;
@@ -93,47 +93,46 @@ export function ReleaseUploadForm({ onCreated }: { onCreated?: () => void }) {
     setMessage('Creating release...');
 
     try {
-      const { data: sessionData } = await supabase.auth.getSession();
-      const token = sessionData.session?.access_token;
-      if (!token) throw new Error('Not logged in');
-      const auth = { Authorization: `Bearer ${token}` };
+      // Step 1 — the artwork goes straight to Storage, then the release shell
+      // (title, artist, price) is created with just the path. Files never pass
+      // through our API: Vercel caps request bodies at ~4.5MB.
+      const cover_path = await uploadDirect('store-cover', cover);
 
-      // Step 1 — the release shell (title, artist, price, artwork).
-      const relForm = new FormData();
-      relForm.append('title', title.trim());
-      relForm.append('artist', artist.trim());
-      relForm.append('kind', kind);
-      relForm.append('price', price);
-      relForm.append('description', description.trim());
-      relForm.append('cover', cover);
-
-      const relRes = await fetch('/api/store/releases', { method: 'POST', headers: auth, body: relForm });
-      const relData = await relRes.json();
-      if (!relRes.ok) throw new Error(relData.error || 'Could not create the release');
+      const relData = await apiPost<{ release: { id: string } }>('/api/store/releases', {
+        title: title.trim(),
+        artist: artist.trim(),
+        kind,
+        price,
+        description: description.trim(),
+        cover_path,
+      });
       const releaseId = relData.release.id;
 
-      // Step 2 — one request per track, so a big album can't blow the body
-      // limit and a single failure doesn't cost you the whole upload.
+      // Step 2 — one track at a time: master to Storage first, then a tiny
+      // JSON call to register it. A single failure costs you that track, not
+      // the whole album.
       let failed = 0;
       for (let i = 0; i < tracks.length; i++) {
         setTracks((prev) => prev.map((t, idx) => (idx === i ? { ...t, status: 'uploading' } : t)));
-        setMessage(`Uploading track ${i + 1} of ${tracks.length}...`);
 
-        const tf = new FormData();
-        tf.append('release_id', releaseId);
-        tf.append('title', tracks[i].title.trim() || tracks[i].file.name);
-        tf.append('track_number', String(i + 1));
-        tf.append('audio', tracks[i].file);
-
-        const res = await fetch('/api/store/tracks', { method: 'POST', headers: auth, body: tf });
-        const data = await res.json();
-        const okRes = res.ok;
-        if (!okRes) failed++;
-        setTracks((prev) =>
-          prev.map((t, idx) =>
-            idx === i ? { ...t, status: okRes ? 'done' : 'failed', error: okRes ? undefined : data.error } : t
-          )
-        );
+        try {
+          const audio_path = await uploadDirect('store-audio', tracks[i].file, (pct) =>
+            setMessage(`Uploading track ${i + 1} of ${tracks.length} — ${pct}%`)
+          );
+          setMessage(`Processing track ${i + 1} of ${tracks.length}...`);
+          await apiPost('/api/store/tracks', {
+            release_id: releaseId,
+            title: tracks[i].title.trim() || tracks[i].file.name,
+            track_number: i + 1,
+            audio_path,
+          });
+          setTracks((prev) => prev.map((t, idx) => (idx === i ? { ...t, status: 'done' } : t)));
+        } catch (trackErr: any) {
+          failed++;
+          setTracks((prev) =>
+            prev.map((t, idx) => (idx === i ? { ...t, status: 'failed', error: trackErr.message } : t))
+          );
+        }
       }
 
       if (failed > 0) {
