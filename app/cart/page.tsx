@@ -6,6 +6,7 @@ import { useCartStore } from '@/stores/useCartStore';
 import Link from 'next/link';
 import { useUsdToKes } from '@/hooks/useUsdToKes';
 import { formatUsd, formatKes } from '@/lib/currency';
+import { EmptyState } from '@/components/EmptyState';
 
 // Checkout always shows KSh, regardless of the browse-page currency toggle —
 // that's the one currency that's ever actually charged (M-Pesa and card
@@ -235,13 +236,11 @@ function CartPageInner() {
     return (
       <div className="max-w-2xl mx-auto p-6 min-h-[60vh] flex flex-col justify-center">
         <h1 className="text-2xl font-bold mb-4 text-orange-100">Your Cart</h1>
-        <div className="text-center py-12 border border-stone-800 rounded-xl bg-stone-900/30">
-          <p className="text-stone-500 text-lg mb-2">Your cart is empty.</p>
-          <p className="text-stone-600 text-sm mb-4">Find some beats and add them here.</p>
-          <Link href="/" className="inline-block px-6 py-2 bg-orange-600 text-white rounded-full font-bold hover:bg-orange-500 transition-all hover:scale-105 focus-visible:ring-2 focus-visible:ring-orange-500 outline-none touch-manipulation">
-            Browse beats
-          </Link>
-        </div>
+        <EmptyState
+          title="Your cart is empty"
+          body="Pick a WAV or the full stems from either catalogue and it'll show up here."
+          action={{ label: 'Browse the beats', href: '/beats' }}
+        />
       </div>
     );
   }

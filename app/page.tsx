@@ -5,6 +5,7 @@ import { useBeatsStore } from '@/stores/useBeatsStore';
 import { BeatChip } from '@/components/beat-chip/BeatChip';
 import Link from 'next/link';
 import Image from 'next/image';
+import { EmptyState } from '@/components/EmptyState';
 
 export default function HomePage() {
   const { beats, loading, error, fetchBeats } = useBeatsStore();
@@ -214,8 +215,11 @@ export default function HomePage() {
             </div>
           ) : !error && beats.length === 0 ? (
             <div className="text-center py-20 border border-stone-800 rounded-xl bg-stone-900/30">
-              <p className="text-stone-500 text-lg">No beats available yet.</p>
-              <p className="text-stone-600 text-sm mt-2">Check back soon for new drops.</p>
+              <EmptyState
+                title="No beats up yet"
+                body="Boom bap, drumless and trap from two producers. The first drops land here."
+                action={{ label: 'Meet the producers', href: '/about' }}
+              />
               <Link 
                 href="/about" 
                 className="inline-block mt-4 text-orange-500 hover:text-orange-400 text-sm underline focus-visible:ring-2 focus-visible:ring-orange-500 rounded outline-none"

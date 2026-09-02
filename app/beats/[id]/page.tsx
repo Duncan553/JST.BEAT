@@ -120,9 +120,21 @@ export default function BeatPage() {
   }, [beat, isInCart, selectedLicense]);
 
   if (loading) {
+    // A skeleton shaped like the page that's coming, not a spinner in the
+    // middle of an empty screen — the layout doesn't jump when data lands,
+    // and the wait reads as "loading this" rather than "something is wrong".
     return (
-      <div className="min-h-screen bg-black text-white flex items-center justify-center">
-        <div className="w-16 h-16 border-2 border-orange-600/30 border-t-orange-600 rounded-full animate-spin" />
+      <div className="min-h-screen text-white" style={{ backgroundColor: 'var(--surface-0)' }}>
+        <div className="max-w-2xl mx-auto px-6 py-16 animate-pulse space-y-8">
+          <div className="mx-auto w-64 h-64 rounded-full" style={{ backgroundColor: 'var(--surface-1)' }} />
+          <div className="mx-auto h-10 w-3/5 rounded-xl" style={{ backgroundColor: 'var(--surface-1)' }} />
+          <div className="mx-auto h-4 w-2/5 rounded-lg" style={{ backgroundColor: 'var(--surface-1)' }} />
+          <div className="space-y-3 pt-6">
+            <div className="h-20 rounded-2xl" style={{ backgroundColor: 'var(--surface-1)' }} />
+            <div className="h-20 rounded-2xl" style={{ backgroundColor: 'var(--surface-1)' }} />
+          </div>
+          <div className="h-14 rounded-2xl" style={{ backgroundColor: 'var(--surface-1)' }} />
+        </div>
       </div>
     );
   }

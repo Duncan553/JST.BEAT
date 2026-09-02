@@ -4,6 +4,7 @@ import type { Metadata } from 'next';
 import { getPublishedReleases } from '@/lib/store';
 import { absoluteUrl, SITE_NAME } from '@/lib/site';
 import { StoreBrowser } from '@/components/store/StoreBrowser';
+import { EmptyState } from '@/components/EmptyState';
 
 // Rendered on the server so the catalogue is in the HTML for Google.
 export const revalidate = 300;
@@ -44,10 +45,11 @@ export default async function StorePage() {
 
       <div className="max-w-6xl mx-auto px-6">
         {releases.length === 0 ? (
-          <div className="text-center py-20 border border-stone-800 rounded-xl bg-stone-900/30">
-            <p className="text-stone-500 text-lg">Nothing in the store yet.</p>
-            <p className="text-stone-600 text-sm mt-2">Check back soon.</p>
-          </div>
+          <EmptyState
+            title="No releases yet"
+            body="Singles and albums from jst.dan and tisco prodz land here. The beats catalogue is already open."
+            action={{ label: 'Browse the beats', href: '/beats' }}
+          />
         ) : (
           <StoreBrowser releases={releases} />
         )}

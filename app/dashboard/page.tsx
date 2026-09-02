@@ -380,9 +380,25 @@ export default function DashboardPage() {
           <div>
             <h2 className="text-xl font-bold mb-4 text-orange-50">Your Beats ({beats.length})</h2>
             {loading ? (
-              <p className="text-stone-500">Loading beats...</p>
+              // Skeleton rows in the shape of the list that's coming, so the
+              // page doesn't jump when the beats land.
+              <div className="space-y-3 animate-pulse">
+                {[0, 1, 2].map((i) => (
+                  <div key={i} className="h-24 rounded-lg" style={{ backgroundColor: 'var(--surface-1)' }} />
+                ))}
+              </div>
             ) : beats.length === 0 ? (
-              <p className="text-stone-500">No beats uploaded yet.</p>
+              <div
+                className="rounded-2xl border px-6 py-10 text-center"
+                style={{ borderColor: 'var(--line)', backgroundColor: 'var(--surface-1)' }}
+              >
+                <p className="font-display text-lg font-bold" style={{ color: 'var(--text-1)' }}>
+                  Nothing uploaded yet
+                </p>
+                <p className="mt-1.5 text-sm" style={{ color: 'var(--text-3)' }}>
+                  Use the form above — the beat goes live the moment it saves.
+                </p>
+              </div>
             ) : (
               <div className="space-y-3">
                 {beats.map((beat) => (
@@ -476,7 +492,11 @@ export default function DashboardPage() {
           <div>
             <h2 className="text-xl font-bold mb-4 text-orange-50">Your releases ({releases.length})</h2>
             {releasesLoading ? (
-              <p className="text-stone-500">Loading...</p>
+              <div className="space-y-3 animate-pulse">
+                {[0, 1].map((i) => (
+                  <div key={i} className="h-20 rounded-lg" style={{ backgroundColor: 'var(--surface-1)' }} />
+                ))}
+              </div>
             ) : releases.length === 0 ? (
               <p className="text-stone-500">Nothing uploaded yet.</p>
             ) : (
@@ -531,7 +551,11 @@ export default function DashboardPage() {
           <div>
             <h2 className="text-xl font-bold mb-4 text-orange-50">Your posts ({posts.length})</h2>
             {postsLoading ? (
-              <p className="text-stone-500">Loading...</p>
+              <div className="space-y-3 animate-pulse">
+                {[0, 1].map((i) => (
+                  <div key={i} className="h-20 rounded-lg" style={{ backgroundColor: 'var(--surface-1)' }} />
+                ))}
+              </div>
             ) : posts.length === 0 ? (
               <p className="text-stone-500">Nothing written yet.</p>
             ) : (
@@ -597,7 +621,11 @@ export default function DashboardPage() {
             tisco prodz manually until that&apos;s wired up.
           </p>
           {earningsLoading ? (
-            <p className="text-stone-500">Loading...</p>
+            <div className="space-y-3 animate-pulse">
+              {[0, 1].map((i) => (
+                <div key={i} className="h-20 rounded-lg" style={{ backgroundColor: 'var(--surface-1)' }} />
+              ))}
+            </div>
           ) : earnings ? (
             <div className="grid sm:grid-cols-2 gap-4 max-w-xl">
               {Object.entries(earnings)

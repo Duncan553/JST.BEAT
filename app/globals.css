@@ -146,12 +146,14 @@
   --surface-1: #121110;
   --surface-2: #1a1817;
   --line: #2a2725;
+  --line-2: #3a3633;   /* a step stronger, for inputs and interactive edges */
 
   /* Text. --text-2 is deliberately brighter than the stone-400/500 this site
      used to use for body copy, which read as disabled rather than secondary. */
   --text-1: #f5f3f1;
   --text-2: #b8b0ab;
   --text-3: #857d78;
+  --text-4: #6b6460;   /* placeholders, disabled — the dimmest step there is */
 
   /* Accent. orange-600 fails contrast as TEXT on near-black, so coloured text
      uses --accent-hot and --accent stays for fills with white on top. */
@@ -166,6 +168,19 @@
 }
 
 @layer base {
+  /* Chrome paints autofilled fields with its own pale blue background and
+     near-black text, which on a dark form looks broken and can make the value
+     unreadable. There is no way to set the background directly — the trick is
+     an inset shadow the size of the field, plus text-fill-color for the text. */
+  input:-webkit-autofill,
+  input:-webkit-autofill:hover,
+  input:-webkit-autofill:focus {
+    -webkit-text-fill-color: var(--text-1);
+    -webkit-box-shadow: 0 0 0 1000px var(--surface-0) inset;
+    caret-color: var(--text-1);
+    transition: background-color 9999s ease-in-out 0s;
+  }
+
   /* Headlines get the display face automatically, so no page has to remember. */
   h1, h2, h3 {
     font-family: var(--font-display);
@@ -188,6 +203,41 @@
 }
 
 @layer utilities {
+
+  /* ---------------------------------------------------------------------
+     LEGACY PALETTE REMAP
+
+     The site was built on raw Tailwind stone classes — 430 of them. Rather
+     than hand-edit every one (and miss some, leaving two palettes fighting),
+     the old classes are remapped onto the tokens here. One place to read,
+     one place to change, and every page moves together.
+
+     The contrast lift is the point: text-stone-500 (#78716c) on near-black
+     is the "reads as disabled" grey that made the whole site look dull.
+     Hover variants (.hover\:bg-stone-800) are separate class names and are
+     deliberately left alone, so hover states still change something.
+     --------------------------------------------------------------------- */
+  .text-stone-200, .text-stone-300 { color: var(--text-1) !important; }
+  .text-stone-400 { color: var(--text-2) !important; }
+  .text-stone-500 { color: var(--text-3) !important; }
+  .text-stone-600 { color: var(--text-4) !important; }
+
+  .border-stone-800, .border-stone-900 { border-color: var(--line) !important; }
+  .border-stone-700, .border-stone-600 { border-color: var(--line-2) !important; }
+
+  .bg-stone-900, .bg-stone-950 { background-color: var(--surface-1) !important; }
+  .bg-stone-900\/30, .bg-stone-900\/40, .bg-stone-900\/50, .bg-stone-900\/60,
+  .bg-stone-950\/30 { background-color: color-mix(in srgb, var(--surface-1) 82%, transparent) !important; }
+  .bg-stone-800 { background-color: var(--surface-2) !important; }
+
+  /* Every primary action on the site is a solid orange fill. Giving them all
+     the same tactile press here beats 30 buttons each inventing their own
+     hover:scale — and transform-only means no layout on tap. */
+  .bg-orange-600, .bg-orange-700 {
+    transition: transform var(--dur-1) var(--ease-out), background-color var(--dur-1) var(--ease-out);
+  }
+  .bg-orange-600:active, .bg-orange-700:active { transform: scale(0.97); }
+
   /* bg-black is pure #000; --surface-0 is a warm near-black. Overriding the
      utility here re-skins every existing `bg-black` on the site in one move,
      rather than hunting 49 of them and getting 47. */
