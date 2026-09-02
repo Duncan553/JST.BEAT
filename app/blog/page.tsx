@@ -93,7 +93,7 @@ export default async function BlogPage() {
             <p className="text-stone-600 text-sm mt-2">Check back soon.</p>
           </div>
         ) : (
-          <div className="space-y-4">
+          <div className="space-y-4 motion-stagger">
             {posts.map((post) => (
               <Link
                 key={post.id}

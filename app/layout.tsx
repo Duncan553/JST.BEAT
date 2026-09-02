@@ -1,12 +1,27 @@
 import type { Metadata } from "next";
-import { Inter } from "next/font/google";
+import { Inter, Bricolage_Grotesque } from "next/font/google";
 import "./globals.css";
 import { Header } from "@/components/Header";
 import { AudioPlayer } from "@/components/audio-player/AudioPlayer";
 import { BottomNav } from "@/components/BottomNav";
 import { SITE_NAME, SITE_DESCRIPTION, SITE_URL, absoluteUrl } from "@/lib/site";
 
-const inter = Inter({ subsets: ["latin"] });
+// Two faces, two jobs (see .claude/skills/design/SKILL.md). Inter is unbeatable
+// for UI at small sizes; it is also completely neutral, which is why a site set
+// entirely in it reads as flat. Bricolage carries the headlines — ink traps and
+// tight apertures give the display type a voice Inter doesn't have.
+const inter = Inter({
+  subsets: ["latin"],
+  variable: "--font-inter",
+  display: "swap",
+});
+
+const bricolage = Bricolage_Grotesque({
+  subsets: ["latin"],
+  variable: "--font-bricolage",
+  display: "swap",
+  weight: ["600", "700", "800"],
+});
 
 export const metadata: Metadata = {
   // metadataBase is what turns a relative image path into the absolute URL
@@ -56,7 +71,7 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en" className="dark">
-      <body className={`${inter.className} antialiased`}>
+      <body className={`${inter.variable} ${bricolage.variable} font-sans antialiased`}>
         <Header />
         <main id="main-content">{children}</main>
         <AudioPlayer />

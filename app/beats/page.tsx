@@ -114,7 +114,9 @@ export default function BeatsPage() {
                     </button>
                   </p>
                 ) : (
-                  <div className="flex flex-wrap gap-3">
+                  // motion-stagger cascades the chips in 40ms apart as the
+                  // catalogue lands — see .claude/skills/motion/SKILL.md
+                  <div className="flex flex-wrap gap-3 motion-stagger">
                     {visible.map((beat) => (
                       <BeatChip key={beat.id} beat={beat} />
                     ))}

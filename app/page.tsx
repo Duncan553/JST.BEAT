@@ -32,35 +32,37 @@ export default function HomePage() {
   return (
     <div className="space-y-0">
       {/* HERO */}
-      <section className="relative bg-black text-white overflow-hidden">
+      {/* accent-glow puts ONE soft orange wash behind the hero. One per page —
+          a glow per section is what makes a site look like a template. */}
+      <section className="accent-glow relative text-white overflow-hidden" style={{ background: 'var(--surface-0)' }}>
         <div className="max-w-6xl mx-auto px-6 py-24 md:py-32 flex flex-col md:flex-row items-center gap-12">
           <div className="flex-1 space-y-8 z-10">
-            <h1 
-              className="text-6xl md:text-8xl font-black tracking-tighter leading-none"
-              style={{ textWrap: 'balance' }}
+            <h1
+              className="font-display font-extrabold"
+              style={{ fontSize: 'var(--text-hero)', letterSpacing: '-0.045em', lineHeight: 1.02, textWrap: 'balance' }}
             >
               JST<span className="text-orange-500">.</span>BEAT
             </h1>
-            <p 
-              className="text-xl text-stone-400 max-w-md leading-relaxed"
-              style={{ textWrap: 'balance' }}
-            >
+            {/* prose-body: 17px, 1.6 leading, 62ch cap, and the brighter
+                secondary colour — stone-400 on black read as disabled text. */}
+            <p className="prose-body" style={{ textWrap: 'balance' }}>
               Boom bap, drumless, alternative hip-hop and trap from{' '}
-              <span className="text-orange-300">jst.dan</span> and{' '}
-              <span className="text-orange-300">tisco prodz</span>. Pay with M-Pesa,
+              <span style={{ color: 'var(--accent-hot)' }}>jst.dan</span> and{' '}
+              <span style={{ color: 'var(--accent-hot)' }}>tisco prodz</span>. Pay with M-Pesa,
               download the WAV or full stems the moment it clears.
             </p>
             <div className="flex flex-wrap gap-4">
               <Link
                 href="/beats"
-                className="group relative px-8 py-3 bg-orange-600 text-white font-bold rounded-full overflow-hidden transition-all hover:scale-105 active:scale-95 focus-visible:ring-2 focus-visible:ring-orange-400 focus-visible:ring-offset-2 focus-visible:ring-offset-black outline-none touch-manipulation"
+                className="group relative px-8 py-3.5 bg-orange-600 text-white font-bold rounded-full overflow-hidden motion-lift motion-press focus-visible:ring-2 focus-visible:ring-orange-400 focus-visible:ring-offset-2 focus-visible:ring-offset-black outline-none touch-manipulation"
               >
                 <span className="relative z-10">Browse All Beats</span>
                 <span className="absolute inset-0 bg-orange-500 translate-y-full group-hover:translate-y-0 transition-transform duration-300 motion-reduce:transition-none" />
               </Link>
               <Link
                 href="/about"
-                className="px-8 py-3 border border-stone-700 text-stone-300 font-bold rounded-full hover:border-orange-500 hover:text-orange-300 transition-all hover:scale-105 active:scale-95 focus-visible:ring-2 focus-visible:ring-orange-400 focus-visible:ring-offset-2 focus-visible:ring-offset-black outline-none touch-manipulation"
+                className="px-8 py-3.5 border font-bold rounded-full motion-lift motion-press focus-visible:ring-2 focus-visible:ring-orange-400 focus-visible:ring-offset-2 focus-visible:ring-offset-black outline-none touch-manipulation"
+                style={{ borderColor: 'var(--line)', color: 'var(--text-1)' }}
               >
                 Meet the producers
               </Link>
@@ -100,8 +102,8 @@ export default function HomePage() {
           </div>
           <div className="flex-1 space-y-6">
             <h2 
-              className="text-4xl md:text-5xl font-serif italic tracking-tight"
-              style={{ textWrap: 'balance' }}
+              className="font-display font-bold"
+              style={{ fontSize: 'var(--text-h1)', textWrap: 'balance' }}
             >
               Two producers.
                <br />
@@ -142,8 +144,8 @@ export default function HomePage() {
           </div>
           <div className="flex-1 space-y-6">
             <h2 
-              className="text-4xl md:text-5xl font-serif italic tracking-tight text-orange-50"
-              style={{ textWrap: 'balance' }}
+              className="font-display font-bold text-orange-50"
+              style={{ fontSize: 'var(--text-h1)', textWrap: 'balance' }}
             >
               Mixed. Mastered.
               <br />
