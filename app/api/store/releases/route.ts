@@ -3,6 +3,7 @@ import { supabaseAdmin } from '@/lib/supabase-admin';
 import { requireUploaderInfo } from '@/lib/auth-server';
 import { rateLimit } from '@/lib/rate-limit';
 import { verifyUploaded, publicUrl, rollbackOrphans } from '@/lib/storage-verify';
+import { revalidatePath } from 'next/cache';
 
 // Creates the RELEASE shell — title, artist, price, cover art. The tracks are
 // uploaded one at a time afterwards via /api/store/tracks.
@@ -75,6 +76,10 @@ export async function POST(req: NextRequest) {
       .select()
       .single();
     if (dbErr) throw dbErr;
+
+    // Same reason as /about and /blog: the store page is cached, so purge it
+    // rather than making a new release wait for the window to close.
+    revalidatePath('/store');
 
     return NextResponse.json({ success: true, release });
   } catch (err: any) {

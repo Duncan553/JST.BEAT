@@ -69,7 +69,7 @@ export function NavDrawer({ open, onClose, groups, footer }: Props) {
       <div
         onClick={onClose}
         aria-hidden="true"
-        className={`md:hidden fixed inset-0 z-50 bg-black/70 backdrop-blur-sm transition-opacity duration-[var(--dur-2)] ease-[var(--ease-out)] ${
+        className={`md:hidden fixed inset-0 z-[60] bg-black/70 backdrop-blur-sm transition-opacity duration-[var(--dur-2)] ease-[var(--ease-out)] ${
           open ? 'opacity-100' : 'opacity-0 pointer-events-none'
         }`}
       />
@@ -82,7 +82,7 @@ export function NavDrawer({ open, onClose, groups, footer }: Props) {
         tabIndex={-1}
         // Slides in from the right — that's the side the thumb holding the
         // phone is already on, and the same side the hamburger sits.
-        className={`md:hidden fixed top-0 right-0 bottom-0 z-50 w-[78%] max-w-xs bg-stone-950 border-l border-stone-800 shadow-2xl shadow-black/60 transition-transform duration-[var(--dur-3)] ease-[var(--ease-out)] outline-none flex flex-col ${
+        className={`md:hidden fixed top-0 right-0 bottom-0 z-[60] w-[78%] max-w-xs bg-stone-950 border-l border-stone-800 shadow-2xl shadow-black/60 transition-transform duration-[var(--dur-3)] ease-[var(--ease-out)] outline-none flex flex-col ${
           open ? 'translate-x-0' : 'translate-x-full'
         }`}
         // Fully out of the tab order and off the accessibility tree when shut.
@@ -107,7 +107,7 @@ export function NavDrawer({ open, onClose, groups, footer }: Props) {
 
         {/* The links. Scrollable, because a long list on a short phone screen
             must not trap the last item below the fold. */}
-        <nav className="flex-1 overflow-y-auto px-3 py-4 space-y-6">
+        <nav className="flex-1 overflow-y-auto px-3 py-4 space-y-6" style={{ paddingBottom: 'calc(1rem + env(safe-area-inset-bottom))' }}>
           {groups.map((group) => (
             <div key={group.heading}>
               <p className="px-2 mb-2 text-[10px] font-bold uppercase tracking-[0.12em] text-stone-600">

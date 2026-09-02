@@ -3,6 +3,7 @@ import { supabaseAdmin } from '@/lib/supabase-admin';
 import { requireUploaderInfo } from '@/lib/auth-server';
 import { rateLimit } from '@/lib/rate-limit';
 import { verifyUploaded, publicUrl } from '@/lib/storage-verify';
+import { revalidatePath } from 'next/cache';
 
 // JSON only. If a new profile photo is being set, the browser has already put
 // it in Storage itself (/api/uploads/sign) and sends just the path — files
@@ -72,6 +73,11 @@ export async function POST(req: NextRequest) {
       .single();
 
     if (error) throw error;
+
+    // /about is statically rendered with `revalidate = 3600`, so a saved
+    // profile used to sit invisible for up to an hour — the page had no idea
+    // anything changed. Purge it now, the moment the row is written.
+    revalidatePath('/about');
 
     return NextResponse.json({ success: true, producer: data });
   } catch (err: any) {

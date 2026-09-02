@@ -88,12 +88,12 @@ export default async function AboutPage() {
                     <Image
                       src={p.photo_url}
                       alt=""
-                      width={56}
-                      height={56}
-                      className="w-14 h-14 rounded-full object-cover border border-stone-700"
+                      width={80}
+                      height={80}
+                      className="w-20 h-20 rounded-full object-cover border border-stone-700"
                     />
                   ) : (
-                    <div className="w-14 h-14 rounded-full bg-stone-800 flex items-center justify-center text-stone-500 text-xl font-bold border border-stone-700">
+                    <div className="w-20 h-20 rounded-full bg-stone-800 flex items-center justify-center text-stone-500 text-2xl font-bold border border-stone-700">
                       {p.name[0].toUpperCase()}
                     </div>
                   )}

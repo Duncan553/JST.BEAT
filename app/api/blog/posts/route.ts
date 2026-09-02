@@ -3,6 +3,7 @@ import { supabaseAdmin } from '@/lib/supabase-admin';
 import { requireUploaderInfo } from '@/lib/auth-server';
 import { rateLimit } from '@/lib/rate-limit';
 import { verifyUploaded, publicUrl } from '@/lib/storage-verify';
+import { revalidatePath } from 'next/cache';
 
 // Blog posts — mainly album reviews, scored out of 10.
 //
@@ -119,6 +120,11 @@ export async function POST(req: NextRequest) {
     }
     if (error) throw error;
 
+    // /blog and the post page are statically rendered — purge them now, or a
+    // published review sits invisible until its cache window expires.
+    revalidatePath('/blog');
+    revalidatePath(`/blog/${data.slug}`);
+
     return NextResponse.json({ success: true, post: data });
   } catch (err: any) {
     console.error('[Blog] Create error:', err.message);
@@ -175,6 +181,11 @@ export async function PATCH(req: NextRequest) {
       return NextResponse.json({ error: 'That URL is already used by another post.' }, { status: 409 });
     }
     if (error) throw error;
+
+    // /blog and the post page are statically rendered — purge them now, or a
+    // published review sits invisible until its cache window expires.
+    revalidatePath('/blog');
+    revalidatePath(`/blog/${data.slug}`);
 
     return NextResponse.json({ success: true, post: data });
   } catch (err: any) {
