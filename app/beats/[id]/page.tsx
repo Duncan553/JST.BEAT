@@ -8,6 +8,8 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { useCartStore } from '@/stores/useCartStore';
 import { usePlayerStore } from '@/stores/usePlayerStore';
+import { useUsdToKes } from '@/hooks/useUsdToKes';
+import { formatUsd, formatKes } from '@/lib/currency';
 
 function BigVinyl({ cover, isPlaying }: { cover: string; isPlaying: boolean }) {
   const vinylRef = useRef<HTMLDivElement>(null);
@@ -84,6 +86,13 @@ export default function BeatPage() {
   const [added, setAdded] = useState(false);
   const { addItem, isInCart } = useCartStore();
   const { currentBeatId, isPlaying, play, pause } = usePlayerStore();
+  // USD is the source of truth; the KSh shown under it comes from the SAME
+  // cached rate /api/paystack/initialize charges with, so the page and the
+  // M-Pesa prompt can never show different numbers. `kes()` returns null
+  // until the rate lands. MUST stay above the loading/404 early returns —
+  // a hook called after a conditional return changes the hook order between
+  // renders, which is exactly what React refuses to allow.
+  const { kes } = useUsdToKes();
 
   useEffect(() => {
     async function fetchBeat() {
@@ -92,7 +101,7 @@ export default function BeatPage() {
         // stems_url is deliberately NOT selected: it's a path into the PRIVATE
         // bucket and this query runs with the public anon key. Stems availability
         // is signalled by price_stems alone (same rule as useCartStore).
-        .select('id, title, bpm, key, genre, cover_art, snippet_url, price_mp3, price_wav, price_stems, tags, created_at')
+        .select('id, title, bpm, key, genre, cover_art, snippet_url, price_mp3, price_wav, price_stems, price_usd_wav, price_usd_stems, tags, created_at')
         .eq('id', id)
         .single();
 
@@ -111,9 +120,21 @@ export default function BeatPage() {
   }, [beat, isInCart, selectedLicense]);
 
   if (loading) {
+    // A skeleton shaped like the page that's coming, not a spinner in the
+    // middle of an empty screen — the layout doesn't jump when data lands,
+    // and the wait reads as "loading this" rather than "something is wrong".
     return (
-      <div className="min-h-screen bg-black text-white flex items-center justify-center">
-        <div className="w-16 h-16 border-2 border-orange-600/30 border-t-orange-600 rounded-full animate-spin" />
+      <div className="min-h-screen text-white" style={{ backgroundColor: 'var(--surface-0)' }}>
+        <div className="max-w-2xl mx-auto px-6 py-16 animate-pulse space-y-8">
+          <div className="mx-auto w-64 h-64 rounded-full" style={{ backgroundColor: 'var(--surface-1)' }} />
+          <div className="mx-auto h-10 w-3/5 rounded-xl" style={{ backgroundColor: 'var(--surface-1)' }} />
+          <div className="mx-auto h-4 w-2/5 rounded-lg" style={{ backgroundColor: 'var(--surface-1)' }} />
+          <div className="space-y-3 pt-6">
+            <div className="h-20 rounded-2xl" style={{ backgroundColor: 'var(--surface-1)' }} />
+            <div className="h-20 rounded-2xl" style={{ backgroundColor: 'var(--surface-1)' }} />
+          </div>
+          <div className="h-14 rounded-2xl" style={{ backgroundColor: 'var(--surface-1)' }} />
+        </div>
       </div>
     );
   }
@@ -132,7 +153,9 @@ export default function BeatPage() {
   // price_stems > 0 is the single source of truth for "stems are on sale".
   // The real file is only ever handed over by /api/orders/download after payment.
   const hasStems = beat.price_stems > 0;
-  const currentPrice = selectedLicense === 'stems' && hasStems ? beat.price_stems : beat.price_wav;
+
+  const currentUsd = selectedLicense === 'stems' && hasStems ? beat.price_usd_stems : beat.price_usd_wav;
+  const currentKes = kes(currentUsd);
 
   const handlePlay = () => {
     if (isThisPlaying) pause();
@@ -218,7 +241,12 @@ export default function BeatPage() {
               <p className="font-bold text-lg">WAV Lease</p>
               <p className="text-sm text-stone-500">High quality, ready for release</p>
             </div>
-            <span className="text-2xl font-black text-orange-400 tabular-nums">KSh {beat.price_wav}</span>
+            <span className="text-right">
+              <span className="block text-2xl font-black text-orange-400 tabular-nums">{formatUsd(beat.price_usd_wav)}</span>
+              {kes(beat.price_usd_wav) && (
+                <span className="block text-xs text-stone-500 tabular-nums">≈ {formatKes(kes(beat.price_usd_wav)!)}</span>
+              )}
+            </span>
           </button>
 
           {hasStems ? (
@@ -234,7 +262,12 @@ export default function BeatPage() {
                 <p className="font-bold text-lg">Trackout / Stems</p>
                 <p className="text-sm text-stone-500">Individual tracks in ZIP file</p>
               </div>
-              <span className="text-2xl font-black text-orange-400 tabular-nums">KSh {beat.price_stems}</span>
+              <span className="text-right">
+                <span className="block text-2xl font-black text-orange-400 tabular-nums">{formatUsd(beat.price_usd_stems)}</span>
+                {kes(beat.price_usd_stems) && (
+                  <span className="block text-xs text-stone-500 tabular-nums">≈ {formatKes(kes(beat.price_usd_stems)!)}</span>
+                )}
+              </span>
             </button>
           ) : (
             <div className="w-full flex items-center justify-between p-5 rounded-2xl border-2 border-stone-900 bg-stone-950/30 opacity-50 cursor-not-allowed">
@@ -257,7 +290,8 @@ export default function BeatPage() {
               onClick={handleAddToCart}
               className="w-full bg-orange-600 text-white py-4 rounded-2xl font-bold text-lg hover:bg-orange-500 transition-all hover:scale-[1.02] active:scale-95 shadow-lg shadow-orange-900/20 focus-visible:ring-2 focus-visible:ring-orange-400 outline-none touch-manipulation"
             >
-              Add {selectedLicense.toUpperCase()} to Cart — KSh {currentPrice}
+              Add {selectedLicense.toUpperCase()} to Cart — {formatUsd(currentUsd)}
+              {currentKes ? <span className="font-normal text-orange-100/80"> · ≈ {formatKes(currentKes)}</span> : null}
             </button>
           )}
         </div>

@@ -3,6 +3,7 @@ import Image from 'next/image';
 import type { Metadata } from 'next';
 import { supabaseAdmin } from '@/lib/supabase-admin';
 import { absoluteUrl, SITE_NAME } from '@/lib/site';
+import { EmptyState } from '@/components/EmptyState';
 
 // Server component: the list is rendered on the server so Google actually
 // sees the posts in the HTML. A client-side fetch would leave crawlers
@@ -88,12 +89,13 @@ export default async function BlogPage() {
 
       <div className="max-w-4xl mx-auto px-6">
         {posts.length === 0 ? (
-          <div className="text-center py-20 border border-stone-800 rounded-xl bg-stone-900/30">
-            <p className="text-stone-500 text-lg">No reviews published yet.</p>
-            <p className="text-stone-600 text-sm mt-2">Check back soon.</p>
-          </div>
+          <EmptyState
+            title="No reviews published yet"
+            body="Album reviews scored out of 10, with the standout track and producer called out. First one is coming."
+            action={{ label: 'Browse the beats', href: '/beats' }}
+          />
         ) : (
-          <div className="space-y-4">
+          <div className="space-y-4 motion-stagger">
             {posts.map((post) => (
               <Link
                 key={post.id}

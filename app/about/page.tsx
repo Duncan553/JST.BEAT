@@ -19,7 +19,7 @@ export default async function AboutPage() {
           className="text-5xl md:text-7xl font-black tracking-tighter mb-8"
           style={{ textWrap: 'balance' }}
         >
-          About <span className="text-orange-500">JST</span>
+          About JST<span className="text-orange-500">.</span>BEAT
         </h1>
         <div className="grid md:grid-cols-2 gap-12 items-center">
           <div className="relative aspect-[3/2] rounded-2xl overflow-hidden border border-stone-800">

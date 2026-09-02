@@ -6,6 +6,7 @@ import { usePlayerStore } from '@/stores/usePlayerStore';
 import { useCartStore } from '@/stores/useCartStore';
 import Link from 'next/link';
 import Image from 'next/image';
+import { formatUsd } from '@/lib/currency';
 
 interface BeatChipProps {
   beat: Beat;
@@ -29,7 +30,9 @@ export function BeatChip({ beat }: BeatChipProps) {
   };
 
   return (
-    <div className="inline-flex items-center gap-2.5 px-3 py-2 rounded-full border border-stone-800 bg-stone-900/40 hover:bg-stone-800/60 hover:border-orange-500/30 transition-all duration-200 shrink-0 group">
+    // motion-lift/press are transform-only, so a wall of chips hovering and
+    // being tapped never triggers layout — see .claude/skills/motion/SKILL.md.
+    <div className="inline-flex items-center gap-2.5 px-3 py-2 rounded-full border border-stone-800 bg-stone-900/40 hover:bg-stone-800/60 hover:border-orange-500/30 transition-colors duration-[var(--dur-1)] shrink-0 group motion-lift motion-press">
       {/* The link wraps everything EXCEPT the play button */}
       <Link 
         href={`/beats/${beat.id}`}
@@ -64,7 +67,9 @@ export function BeatChip({ beat }: BeatChipProps) {
             {beat.title}
           </p>
           <p className="text-[10px] text-stone-500 mt-0.5">
-            {beat.bpm} BPM · KSh {beat.price_wav}
+            {/* USD is the price. The chip is too small for both currencies —
+                the KSh a local buyer pays is shown on the beat page. */}
+            {beat.bpm} BPM · {formatUsd(beat.price_usd_wav)}
           </p>
         </div>
       </Link>

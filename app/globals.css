@@ -7,9 +7,12 @@
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-sans);
+  /* font-sans = Inter (UI), font-display = Bricolage (headlines).
+     See .claude/skills/design/SKILL.md — two faces, two jobs. */
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+  --font-display: var(--font-bricolage), var(--font-inter), sans-serif;
   --font-mono: var(--font-geist-mono);
-  --font-heading: var(--font-sans);
+  --font-heading: var(--font-bricolage), var(--font-inter), sans-serif;
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
@@ -129,6 +132,212 @@
   }
 }
 
+/* ---------------------------------------------------------------------------
+   DESIGN TOKENS  (the reasoning lives in .claude/skills/design/SKILL.md)
+
+   A dark site reads as dull for four reasons: one flat black, one font doing
+   every job, grey-on-grey body text, and no texture. These tokens exist to
+   fix the first, third and fourth; the font pairing fixes the second.
+   --------------------------------------------------------------------------- */
+:root {
+  /* Surfaces. NOT pure black — a warm near-black gives the orange somewhere
+     to sit, and the three steps are what make anything read as near or far. */
+  --surface-0: #0a0908;
+  --surface-1: #121110;
+  --surface-2: #1a1817;
+  --line: #2a2725;
+  --line-2: #3a3633;   /* a step stronger, for inputs and interactive edges */
+
+  /* Text. --text-2 is deliberately brighter than the stone-400/500 this site
+     used to use for body copy, which read as disabled rather than secondary. */
+  --text-1: #f5f3f1;
+  --text-2: #b8b0ab;
+  --text-3: #857d78;
+  --text-4: #6b6460;   /* placeholders, disabled — the dimmest step there is */
+
+  /* Accent. orange-600 fails contrast as TEXT on near-black, so coloured text
+     uses --accent-hot and --accent stays for fills with white on top. */
+  --accent: #ea580c;
+  --accent-hot: #fb923c;
+  --accent-soft: rgb(234 88 12 / 0.12);
+
+  /* Fluid type scale — one set of sizes from a 360px phone to a desktop. */
+  --text-hero: clamp(2.75rem, 8vw, 5.5rem);
+  --text-h1: clamp(2rem, 5vw, 3.25rem);
+  --text-h2: clamp(1.5rem, 3vw, 2rem);
+}
+
+@layer base {
+  /* Chrome paints autofilled fields with its own pale blue background and
+     near-black text, which on a dark form looks broken and can make the value
+     unreadable. There is no way to set the background directly — the trick is
+     an inset shadow the size of the field, plus text-fill-color for the text. */
+  input:-webkit-autofill,
+  input:-webkit-autofill:hover,
+  input:-webkit-autofill:focus {
+    -webkit-text-fill-color: var(--text-1);
+    -webkit-box-shadow: 0 0 0 1000px var(--surface-0) inset;
+    caret-color: var(--text-1);
+    transition: background-color 9999s ease-in-out 0s;
+  }
+
+  /* Headlines get the display face automatically, so no page has to remember. */
+  h1, h2, h3 {
+    font-family: var(--font-display);
+    letter-spacing: -0.03em;
+    line-height: 1.08;
+  }
+
+  /* Grain. 3% noise over the whole page — the single most effective way to
+     stop a dark background reading as an unstyled div. Fixed, non-interactive,
+     and behind everything that matters. */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+    pointer-events: none;
+    opacity: 0.035;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)'/%3E%3C/svg%3E");
+  }
+}
+
+@layer utilities {
+
+  /* ---------------------------------------------------------------------
+     LEGACY PALETTE REMAP
+
+     The site was built on raw Tailwind stone classes — 430 of them. Rather
+     than hand-edit every one (and miss some, leaving two palettes fighting),
+     the old classes are remapped onto the tokens here. One place to read,
+     one place to change, and every page moves together.
+
+     The contrast lift is the point: text-stone-500 (#78716c) on near-black
+     is the "reads as disabled" grey that made the whole site look dull.
+     Hover variants (.hover\:bg-stone-800) are separate class names and are
+     deliberately left alone, so hover states still change something.
+     --------------------------------------------------------------------- */
+  .text-stone-200, .text-stone-300 { color: var(--text-1) !important; }
+  .text-stone-400 { color: var(--text-2) !important; }
+  .text-stone-500 { color: var(--text-3) !important; }
+  .text-stone-600 { color: var(--text-4) !important; }
+
+  .border-stone-800, .border-stone-900 { border-color: var(--line) !important; }
+  .border-stone-700, .border-stone-600 { border-color: var(--line-2) !important; }
+
+  .bg-stone-900, .bg-stone-950 { background-color: var(--surface-1) !important; }
+  .bg-stone-900\/30, .bg-stone-900\/40, .bg-stone-900\/50, .bg-stone-900\/60,
+  .bg-stone-950\/30 { background-color: color-mix(in srgb, var(--surface-1) 82%, transparent) !important; }
+  .bg-stone-800 { background-color: var(--surface-2) !important; }
+
+  /* Every primary action on the site is a solid orange fill. Giving them all
+     the same tactile press here beats 30 buttons each inventing their own
+     hover:scale — and transform-only means no layout on tap. */
+  .bg-orange-600, .bg-orange-700 {
+    transition: transform var(--dur-1) var(--ease-out), background-color var(--dur-1) var(--ease-out);
+  }
+  .bg-orange-600:active, .bg-orange-700:active { transform: scale(0.97); }
+
+  /* bg-black is pure #000; --surface-0 is a warm near-black. Overriding the
+     utility here re-skins every existing `bg-black` on the site in one move,
+     rather than hunting 49 of them and getting 47. */
+  .bg-black { background-color: var(--surface-0) !important; }
+
+  /* Body copy that stays readable: capped measure, generous leading, and the
+     brighter secondary colour rather than grey-on-grey. */
+  .prose-body {
+    color: var(--text-2);
+    font-size: 1.0625rem;
+    line-height: 1.6;
+    max-width: 62ch;
+  }
+
+  /* One soft accent wash. Hero only — a page with four of these looks like a
+     template. Sits behind content and never intercepts clicks. */
+  .accent-glow {
+    position: relative;
+  }
+  .accent-glow::before {
+    content: '';
+    position: absolute;
+    inset: -20% -10% auto -10%;
+    height: 70%;
+    z-index: -1;
+    pointer-events: none;
+    background: radial-gradient(60% 60% at 30% 20%, rgb(234 88 12 / 0.16), transparent 70%);
+  }
+}
+
+/* ---------------------------------------------------------------------------
+   MOTION SYSTEM  (the rules live in .claude/skills/motion/SKILL.md)
+
+   Short durations, compositor-only properties, one entrance shape reused
+   everywhere. The point is a site that feels quick and physical — motion that
+   shows where something came from, never motion for decoration.
+   --------------------------------------------------------------------------- */
+:root {
+  --dur-1: 120ms;  /* hover, focus, colour, press */
+  --dur-2: 180ms;  /* small element in/out */
+  --dur-3: 260ms;  /* drawer, sheet, overlay */
+  --dur-4: 320ms;  /* large travel */
+
+  /* Fast start, soft settle — reads as "already on its way". */
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  /* Accelerates away. Exits never linger. */
+  --ease-in: cubic-bezier(0.4, 0, 1, 1);
+  /* Symmetric, for moving between two on-screen points. */
+  --ease-move: cubic-bezier(0.65, 0, 0.35, 1);
+  /* Slight overshoot. Deliberately rare. */
+  --ease-pop: cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+@layer utilities {
+  /* The one entrance shape: 12px up + fade. Short travel on purpose — the eye
+     tracks distance, so a long slide feels slow even at the same duration. */
+  @keyframes motion-rise {
+    from { opacity: 0; transform: translateY(12px); }
+    to   { opacity: 1; transform: none; }
+  }
+
+  .motion-rise {
+    animation: motion-rise var(--dur-2) var(--ease-out) both;
+  }
+
+  /* Cascade for lists. 40ms apart, capped at 8 — past that the last row is
+     visibly waiting on the first, which is just slowness with extra steps. */
+  .motion-stagger > * {
+    animation: motion-rise var(--dur-2) var(--ease-out) both;
+  }
+  .motion-stagger > *:nth-child(1) { animation-delay: 0ms; }
+  .motion-stagger > *:nth-child(2) { animation-delay: 40ms; }
+  .motion-stagger > *:nth-child(3) { animation-delay: 80ms; }
+  .motion-stagger > *:nth-child(4) { animation-delay: 120ms; }
+  .motion-stagger > *:nth-child(5) { animation-delay: 160ms; }
+  .motion-stagger > *:nth-child(6) { animation-delay: 200ms; }
+  .motion-stagger > *:nth-child(7) { animation-delay: 240ms; }
+  .motion-stagger > *:nth-child(n+8) { animation-delay: 280ms; }
+
+  /* Tactile press. transform only — no layout, no paint. */
+  .motion-press {
+    transition: transform var(--dur-1) var(--ease-out);
+  }
+  .motion-press:active {
+    transform: scale(0.97);
+  }
+
+  /* Hover lift, pointer devices only: on a touchscreen :hover sticks after a
+     tap and the element stays raised, which looks broken. */
+  @media (hover: hover) and (pointer: fine) {
+    .motion-lift {
+      transition: transform var(--dur-1) var(--ease-out), box-shadow var(--dur-1) var(--ease-out);
+    }
+    .motion-lift:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 8px 24px -12px rgb(0 0 0 / 0.8);
+    }
+  }
+}
+
 /* Accessibility utilities */
 @layer utilities {
   .touch-manipulation {
@@ -146,6 +355,7 @@
     *::after {
       animation-duration: 0.01ms !important;
       animation-iteration-count: 1 !important;
+      animation-delay: 0ms !important;   /* or a staggered list arrives late with no animation to explain it */
       transition-duration: 0.01ms !important;
     }
   }

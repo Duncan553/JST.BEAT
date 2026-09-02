@@ -51,7 +51,7 @@ export default function LoginPage() {
         </div>
         {error && <p id="login-error" className="text-red-400 text-sm" role="alert">{error}</p>}
         <button type="submit" disabled={submitting}
-          className="w-full bg-black text-white py-2 rounded-lg hover:bg-gray-800 disabled:opacity-60 transition focus-visible:ring-2 focus-visible:ring-orange-500 focus-visible:ring-offset-2 focus-visible:ring-offset-black outline-none touch-manipulation">
+          className="w-full bg-orange-600 text-white font-bold py-3 rounded-xl hover:bg-orange-500 disabled:opacity-60 transition-colors duration-[var(--dur-1)] focus-visible:ring-2 focus-visible:ring-orange-400 focus-visible:ring-offset-2 focus-visible:ring-offset-black outline-none touch-manipulation">
           {submitting ? 'Signing in...' : 'Login'}
         </button>
       </form>

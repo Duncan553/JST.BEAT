@@ -6,6 +6,7 @@ import { BeatChip } from '@/components/beat-chip/BeatChip';
 import { Beat } from '@/types/beat';
 import { CatalogSearch, matchesQuery } from '@/components/CatalogSearch';
 import Link from 'next/link';
+import { EmptyState } from '@/components/EmptyState';
 
 const PRODUCERS = ['jst.dan', 'tisco prodz'] as const;
 
@@ -66,8 +67,11 @@ export default function BeatsPage() {
           </div>
         ) : !error && beats.length === 0 ? (
           <div className="text-center py-20 border border-stone-800 rounded-xl bg-stone-900/30">
-            <p className="text-stone-500 text-lg">No beats available yet.</p>
-            <p className="text-stone-600 text-sm mt-2">Check back soon for new drops.</p>
+            <EmptyState
+              title="No beats up yet"
+              body="Both catalogues are empty right now. New drops appear here the moment they're uploaded."
+              action={{ label: 'Meet the producers', href: '/about' }}
+            />
             <Link
               href="/about"
               className="inline-block mt-4 text-orange-500 hover:text-orange-400 text-sm underline focus-visible:ring-2 focus-visible:ring-orange-500 rounded outline-none"
@@ -114,7 +118,9 @@ export default function BeatsPage() {
                     </button>
                   </p>
                 ) : (
-                  <div className="flex flex-wrap gap-3">
+                  // motion-stagger cascades the chips in 40ms apart as the
+                  // catalogue lands — see .claude/skills/motion/SKILL.md
+                  <div className="flex flex-wrap gap-3 motion-stagger">
                     {visible.map((beat) => (
                       <BeatChip key={beat.id} beat={beat} />
                     ))}

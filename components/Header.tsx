@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useAuthStore } from '@/stores/useAuthStore';
 import { useCartStore } from '@/stores/useCartStore';
+import { NavDrawer } from '@/components/NavDrawer';
 
 export function Header() {
   const [menuOpen, setMenuOpen] = useState(false);
@@ -22,11 +23,43 @@ export function Header() {
     { href: '/about', label: 'About' },
   ];
 
+  // The drawer groups the same destinations and says what each one is. The
+  // bottom tab bar only carries four; everything else was previously
+  // reachable only by opening a menu and reading a flat list of labels.
+  const drawerGroups = [
+    {
+      heading: 'Browse',
+      items: [
+        { href: '/beats', label: 'Beats', hint: 'Instrumentals to license' },
+        { href: '/store', label: 'Store', hint: 'Singles & albums to buy' },
+        { href: '/blog', label: 'Reviews', hint: 'Album reviews, scored /10' },
+        { href: '/art-museum', label: 'Art Museum', hint: 'Coming soon' },
+      ],
+    },
+    {
+      heading: 'Your stuff',
+      items: [
+        { href: '/cart', label: items.length > 0 ? `Cart (${items.length})` : 'Cart', hint: 'Checkout with M-Pesa or card' },
+        ...(isLoggedIn ? [{ href: '/dashboard', label: 'Dashboard', hint: 'Upload and manage your catalogue' }] : []),
+      ],
+    },
+    {
+      heading: 'About',
+      items: [{ href: '/about', label: 'About JST.BEAT', hint: 'Who makes these beats' }],
+    },
+  ];
+
   return (
-    <header className="sticky top-0 z-50 bg-black/80 backdrop-blur-md border-b border-stone-800/50">
+    <>
+    <header
+      className="sticky top-0 z-50 backdrop-blur-md border-b"
+      // Surface-1 over the page's surface-0: the header reads as a layer above
+      // the content rather than a black band merging into it.
+      style={{ backgroundColor: 'rgb(18 17 16 / 0.82)', borderColor: 'var(--line)' }}
+    >
       <div className="max-w-6xl mx-auto px-6 h-16 flex items-center justify-between">
         {/* Logo */}
-        <Link href="/" className="text-2xl font-black tracking-tighter text-white hover:text-orange-400 transition focus-visible:ring-2 focus-visible:ring-orange-500 rounded outline-none">
+        <Link href="/" className="font-display text-2xl font-extrabold tracking-tighter text-white hover:text-orange-400 transition-colors duration-[var(--dur-1)] focus-visible:ring-2 focus-visible:ring-orange-500 rounded outline-none">
           JST<span className="text-orange-500">.</span>BEAT
         </Link>
 
@@ -36,7 +69,8 @@ export function Header() {
             <Link
               key={link.href}
               href={link.href}
-              className="text-sm font-medium text-stone-400 hover:text-orange-400 transition focus-visible:ring-2 focus-visible:ring-orange-500 rounded outline-none"
+              className="text-sm font-medium transition-colors duration-[var(--dur-1)] hover:text-orange-400 focus-visible:ring-2 focus-visible:ring-orange-500 rounded outline-none"
+              style={{ color: 'var(--text-2)' }}
             >
               {link.label}
             </Link>
@@ -54,7 +88,8 @@ export function Header() {
           {/* Cart */}
           <Link
             href="/cart"
-            className="relative text-sm font-medium text-stone-400 hover:text-orange-400 transition focus-visible:ring-2 focus-visible:ring-orange-500 rounded outline-none"
+            className="relative text-sm font-medium transition-colors duration-[var(--dur-1)] hover:text-orange-400 focus-visible:ring-2 focus-visible:ring-orange-500 rounded outline-none"
+            style={{ color: 'var(--text-2)' }}
           >
             Cart
             {items.length > 0 && (
@@ -68,7 +103,7 @@ export function Header() {
           {!isLoggedIn ? (
             <Link
               href="/login"
-              className="text-sm font-bold bg-orange-600 text-white px-4 py-2 rounded-full hover:bg-orange-500 transition focus-visible:ring-2 focus-visible:ring-orange-400 outline-none"
+              className="text-sm font-bold bg-orange-600 text-white px-4 py-2 rounded-full hover:bg-orange-500 transition-colors duration-[var(--dur-1)] motion-press focus-visible:ring-2 focus-visible:ring-orange-400 outline-none"
             >
               Login
             </Link>
@@ -95,46 +130,28 @@ export function Header() {
         </button>
       </div>
 
-      {/* Mobile Menu */}
-      {menuOpen && (
-        <div className="md:hidden border-t border-stone-800 bg-black/95 px-6 py-4 space-y-3">
-          {navLinks.map((link) => (
-            <Link
-              key={link.href}
-              href={link.href}
-              onClick={() => setMenuOpen(false)}
-              className="block text-stone-400 hover:text-orange-400 transition py-1"
-            >
-              {link.label}
-            </Link>
-          ))}
-          {isLoggedIn && (
-            <Link
-              href="/dashboard"
-              onClick={() => setMenuOpen(false)}
-              className="block text-orange-400 hover:text-orange-300 transition py-1"
-            >
-              Dashboard
-            </Link>
-          )}
-          <Link
-            href="/cart"
-            onClick={() => setMenuOpen(false)}
-            className="block text-stone-400 hover:text-orange-400 transition py-1"
-          >
-            Cart {items.length > 0 && `(${items.length})`}
-          </Link>
-          {!isLoggedIn && (
-            <Link
-              href="/login"
-              onClick={() => setMenuOpen(false)}
-              className="block text-orange-400 font-bold py-1"
-            >
-              Login
-            </Link>
-          )}
-        </div>
-      )}
     </header>
+
+    {/* Slides in over the page instead of pushing it down, so the storefront
+        stays put while you look for where to go. */}
+    <NavDrawer
+      open={menuOpen}
+      onClose={() => setMenuOpen(false)}
+      groups={drawerGroups}
+      footer={
+        !isLoggedIn ? (
+          <Link
+            href="/login"
+            onClick={() => setMenuOpen(false)}
+            className="block w-full text-center bg-orange-600 text-white font-bold py-3 rounded-xl hover:bg-orange-500 transition"
+          >
+            Producer login
+          </Link>
+        ) : (
+          <p className="text-xs text-stone-500 truncate">Signed in as {user?.email}</p>
+        )
+      }
+    />
+    </>
   );
 }
