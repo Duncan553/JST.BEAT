@@ -11,10 +11,10 @@ interface CartItem {
 interface CartState {
   items: CartItem[];
   addItem: (beat: Beat, license: 'wav' | 'stems') => void;
-  removeItem: (beatId: string) => void;
+  removeItem: (beatId: string, license?: 'wav' | 'stems') => void;
   clearCart: () => void;
   getTotal: () => number;
-  isInCart: (beatId: string) => boolean;
+  isInCart: (beatId: string, license?: 'wav' | 'stems') => boolean;
 }
 
 export const useCartStore = create<CartState>()(
@@ -24,9 +24,12 @@ export const useCartStore = create<CartState>()(
 
       addItem: (beat, license) => {
         const { items } = get();
-        const exists = items.find((i) => i.beat.id === beat.id);
+        // Match on beat AND license. Matching on the beat alone meant buying
+        // the WAV made the Stems of that same beat unaddable — one beat could
+        // only ever sell one licence.
+        const exists = items.find((i) => i.beat.id === beat.id && i.license === license);
         if (exists) {
-          console.log('Beat already in cart:', beat.title);
+          console.log('Already in cart:', beat.title, license.toUpperCase());
           return;
         }
 
@@ -53,10 +56,15 @@ export const useCartStore = create<CartState>()(
         console.log('Added to cart:', beat.title, license.toUpperCase(), 'KSh', price);
       },
 
-      removeItem: (beatId) => {
+      // A beat can now appear twice (WAV + Stems), so removal takes the
+      // licence too. Omit it and every licence of that beat is dropped —
+      // which is what the "Remove" button on a beat-level control wants.
+      removeItem: (beatId, license) => {
         const { items } = get();
         set({
-          items: items.filter((i) => i.beat.id !== beatId),
+          items: items.filter((i) =>
+            license ? !(i.beat.id === beatId && i.license === license) : i.beat.id !== beatId
+          ),
         });
       },
 
@@ -66,8 +74,12 @@ export const useCartStore = create<CartState>()(
         return get().items.reduce((sum, item) => sum + item.price, 0);
       },
 
-      isInCart: (beatId) => {
-        return get().items.some((i) => i.beat.id === beatId);
+      // With no licence: "is this beat in the cart at all?" (chip badges).
+      // With one: "is this exact licence in the cart?" (the buy button).
+      isInCart: (beatId, license) => {
+        return get().items.some((i) =>
+          i.beat.id === beatId && (license ? i.license === license : true)
+        );
       },
     }),
     {

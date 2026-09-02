@@ -5,7 +5,30 @@ import os from 'os';
 import path from 'path';
 import crypto from 'crypto';
 
-if (ffmpegPath) ffmpeg.setFfmpegPath(ffmpegPath);
+// ffmpeg-static exports a path built from its own __dirname. Next's server
+// bundler rewrites that to "/ROOT/node_modules/ffmpeg-static/ffmpeg", which
+// does not exist — so every upload died with `spawn ... ENOENT` even though
+// the binary was sitting right there. Resolve it ourselves and, crucially,
+// CHECK the file exists before trusting it.
+function resolveFfmpeg(): string | null {
+  const candidates = [
+    ffmpegPath as string | null,
+    path.join(process.cwd(), 'node_modules', 'ffmpeg-static', 'ffmpeg'),
+    '/usr/bin/ffmpeg',
+    '/usr/local/bin/ffmpeg',
+  ];
+  for (const c of candidates) {
+    if (c && !c.startsWith('/ROOT/') && fs.existsSync(c)) return c;
+  }
+  return null;
+}
+
+const FFMPEG_BIN = resolveFfmpeg();
+if (FFMPEG_BIN) {
+  ffmpeg.setFfmpegPath(FFMPEG_BIN);
+} else {
+  console.error('[audio-tag] No usable ffmpeg binary found — snippet creation will fail.');
+}
 
 const TAG_DIR = path.join(process.cwd(), 'assets', 'tags');
 const TAG_FILENAMES: Record<'jst.dan' | 'tisco prodz', string> = {
@@ -78,6 +101,53 @@ export async function createSnippet(
         .save(outPath);
     });
 
+    return await fs.promises.readFile(outPath);
+  } finally {
+    await fs.promises.rm(inPath, { force: true });
+    await fs.promises.rm(outPath, { force: true });
+  }
+}
+
+// Bitrate for the free store stream. High enough that the song is genuinely
+// enjoyable end to end, low enough that it is not a substitute for the file
+// a buyer pays for.
+const STREAM_BITRATE = '128k';
+
+/**
+ * Builds the PUBLIC streaming copy of a STORE track.
+ *
+ * Deliberately different from createSnippet() in two ways:
+ *
+ *  1. FULL LENGTH, not capped. The store sells finished music, and the whole
+ *     point is that anyone can play a record start to finish for free — the
+ *     Audiomack model. Only the download is paid.
+ *
+ *  2. NO producer tag. A tag over a beat protects an unsold instrumental.
+ *     Stamping one over a singer's finished record would just vandalise it.
+ *
+ * Protection comes from quality instead: this is a 128kbps MP3, while the
+ * original the buyer downloads stays untouched in the private bucket. Someone
+ * pulling this out of devtools gets the stream, never the master.
+ */
+export async function createStreamCopy(audioBuffer: Buffer, originalFilename: string): Promise<Buffer> {
+  const ext = path.extname(originalFilename) || '.mp3';
+  const tmpDir = os.tmpdir();
+  const id = crypto.randomUUID();
+  const inPath = path.join(tmpDir, `${id}-in${ext}`);
+  const outPath = path.join(tmpDir, `${id}-stream.mp3`);
+
+  await fs.promises.writeFile(inPath, audioBuffer);
+
+  try {
+    await new Promise<void>((resolve, reject) => {
+      ffmpeg()
+        .input(inPath)
+        .audioCodec('libmp3lame')
+        .audioBitrate(STREAM_BITRATE)
+        .on('error', reject)
+        .on('end', () => resolve())
+        .save(outPath);
+    });
     return await fs.promises.readFile(outPath);
   } finally {
     await fs.promises.rm(inPath, { force: true });

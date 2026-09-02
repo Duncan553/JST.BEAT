@@ -1,13 +1,17 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useAuthStore } from '@/stores/useAuthStore';
 import { useCartStore } from '@/stores/useCartStore';
 
 export function Header() {
   const [menuOpen, setMenuOpen] = useState(false);
-  const { isLoggedIn, user } = useAuthStore();
+  const { isLoggedIn, user, initAuth } = useAuthStore();
+  // Rehydrate the Supabase session on every page load. Without this the
+  // store only ever knows you're logged in during the same JS session you
+  // typed the password in — one refresh and the app thinks you're a guest.
+  useEffect(() => { initAuth(); }, [initAuth]);
   const { items } = useCartStore();
 
   const navLinks = [

@@ -3,6 +3,7 @@ import { supabaseAdmin } from '@/lib/supabase-admin';
 import { rateLimit } from '@/lib/rate-limit';
 import { requireUploader } from '@/lib/auth-server';
 import { createSnippet } from '@/lib/audio-tag';
+import { getUsdToKes, usdToKes } from '@/lib/pricing';
 import crypto from 'crypto';
 
 const ALLOWED_AUDIO = ['audio/mpeg', 'audio/wav', 'audio/x-wav', 'audio/mp3', 'audio/wave'];
@@ -32,12 +33,19 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Rate limited' }, { status: 429 });
   }
 
+  // Declared out here so the catch block below can roll these back.
+  const written: Array<{ bucket: string; path: string }> = [];
+
   try {
     const formData = await req.formData();
     const title = String(formData.get('title') || '').trim();
     const bpm = parseInt(String(formData.get('bpm')), 10) || 0;
     const key = String(formData.get('key') || '').trim();
     const genre = String(formData.get('genre') || '').trim();
+    // Beats are priced in USD. The legacy KES fields are still accepted so an
+    // older client doesn't break, but USD is what gets stored as the truth.
+    const price_usd_wav = parseFloat(String(formData.get('price_usd_wav'))) || 0;
+    const price_usd_stems = parseFloat(String(formData.get('price_usd_stems'))) || 0;
     const price_wav = parseFloat(String(formData.get('price_wav'))) || 0;
     const price_stems = parseFloat(String(formData.get('price_stems'))) || 0;
     const tagsRaw = String(formData.get('tags') || '').trim();
@@ -76,8 +84,8 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // WAV price is required — must be > 0
-    if (!Number.isFinite(price_wav) || price_wav <= 0) {
+    // A WAV price is required in one currency or the other.
+    if (price_usd_wav <= 0 && price_wav <= 0) {
       return NextResponse.json({ error: 'WAV price must be greater than 0' }, { status: 400 });
     }
 
@@ -97,30 +105,30 @@ export async function POST(req: NextRequest) {
       ? await createSnippet(Buffer.from(await snippetFile.arrayBuffer()), sanitizeFilename(snippetFile.name), producer)
       : await createSnippet(Buffer.from(await audio.arrayBuffer()), safeAudioName, producer);
 
+    // Uploads one file and records it, so a later failure can undo it.
+    const put = async (bucket: string, path: string, body: Blob | Buffer, contentType: string) => {
+      const { error } = await supabaseAdmin.storage
+        .from(bucket).upload(path, body, { contentType, upsert: false });
+      if (error) throw error;
+      written.push({ bucket, path });
+    };
+
     // Upload preview to PUBLIC bucket
-    const { error: audioErr } = await supabaseAdmin.storage
-      .from('beats-public').upload(audioPath, snippet, { contentType: audio.type, upsert: false });
-    if (audioErr) throw audioErr;
+    await put('beats-public', audioPath, snippet, audio.type);
 
     // Upload cover to PUBLIC bucket
-    const { error: coverErr } = await supabaseAdmin.storage
-      .from('beats-public').upload(coverPath, cover, { contentType: cover.type, upsert: false });
-    if (coverErr) throw coverErr;
+    await put('beats-public', coverPath, cover, cover.type);
 
     // Upload FULL beat to PRIVATE bucket
-    const { error: fullErr } = await supabaseAdmin.storage
-      .from('beats-private').upload(fullPath, audio, { contentType: audio.type, upsert: false });
-    if (fullErr) throw fullErr;
+    await put('beats-private', fullPath, audio, audio.type);
 
     // Upload stems ZIP to PRIVATE bucket (optional)
     let stemsUrl: string | null = null;
     if (stemsZip) {
       const safeStemsName = sanitizeFilename(stemsZip.name);
       const stemsPath = `stems/${Date.now()}-${crypto.randomUUID()}-${safeStemsName}`;
-      const { error: stemsErr } = await supabaseAdmin.storage
-        .from('beats-private').upload(stemsPath, stemsZip, { contentType: stemsZip.type, upsert: false });
-      if (stemsErr) throw stemsErr;
-      
+      await put('beats-private', stemsPath, stemsZip, stemsZip.type);
+
       const { data: stemsData } = supabaseAdmin.storage.from('beats-private').getPublicUrl(stemsPath);
       stemsUrl = stemsData.publicUrl;
     }
@@ -134,12 +142,23 @@ export async function POST(req: NextRequest) {
       ? tagsRaw.split(',').map((t) => t.trim()).filter((t) => t.length > 0 && t.length <= 30)
       : [];
 
+    // KES is derived from USD at request time, never stored as a second
+    // source of truth. The legacy price_wav/price_stems columns are filled
+    // with a snapshot only so older read paths keep working.
+    const { rate } = await getUsdToKes();
+    const usdWav = price_usd_wav > 0 ? price_usd_wav : price_wav / rate;
+    const usdStems = price_usd_stems > 0 ? price_usd_stems : price_stems / rate;
+
     const beatData: any = {
       title, bpm, key, genre, producer,
       cover_art: coverUrl.publicUrl,
       snippet_url: audioUrl.publicUrl,
       full_url: fullUrl.publicUrl,
-      price_wav, price_stems, tags,
+      price_usd_wav: Number(usdWav.toFixed(2)),
+      price_usd_stems: Number(usdStems.toFixed(2)),
+      price_wav: usdToKes(usdWav, rate),
+      price_stems: usdStems > 0 ? usdToKes(usdStems, rate) : 0,
+      tags,
     };
 
     // Only add stems_url if a ZIP was uploaded
@@ -154,6 +173,18 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ success: true, beat: inserted });
   } catch (err: any) {
     console.error('Upload error:', err.message);
-    return NextResponse.json({ error: 'Upload failed' }, { status: 500 });
+
+    // Roll back anything already in storage. A half-finished upload used to
+    // leave the audio, cover, full track and stems behind with no DB row
+    // pointing at them — invisible junk you keep paying to store.
+    for (const { bucket, path } of written) {
+      const { error } = await supabaseAdmin.storage.from(bucket).remove([path]);
+      if (error) console.error(`[Upload] Could not roll back ${bucket}/${path}:`, error.message);
+    }
+
+    // Send the real reason back. This used to be a flat "Upload failed",
+    // which is why a missing `producer` column looked like a mystery for
+    // weeks — the actual error never left the server.
+    return NextResponse.json({ error: err.message || 'Upload failed' }, { status: 500 });
   }
 }

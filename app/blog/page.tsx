@@ -1,10 +1,75 @@
-'use client';
-
 import Link from 'next/link';
+import Image from 'next/image';
+import type { Metadata } from 'next';
+import { supabaseAdmin } from '@/lib/supabase-admin';
+import { absoluteUrl, SITE_NAME } from '@/lib/site';
 
-export default function BlogPage() {
+// Server component: the list is rendered on the server so Google actually
+// sees the posts in the HTML. A client-side fetch would leave crawlers
+// looking at an empty page.
+export const revalidate = 300; // re-render at most every 5 minutes
+
+export const metadata: Metadata = {
+  title: 'Album Reviews',
+  description: 'Album reviews scored out of 10, plus music writing from jst.dan and tisco prodz.',
+  alternates: { canonical: absoluteUrl('/blog') },
+  openGraph: {
+    title: `Album Reviews — ${SITE_NAME}`,
+    description: 'Album reviews scored out of 10, plus music writing from jst.dan and tisco prodz.',
+    url: absoluteUrl('/blog'),
+    type: 'website',
+  },
+};
+
+type PostRow = {
+  id: string;
+  slug: string;
+  title: string;
+  album_artist: string | null;
+  album_title: string | null;
+  standout_track: string | null;
+  standout_producer: string | null;
+  cover_art: string | null;
+  body: string;
+  rating: number | null;
+  created_at: string;
+  author: string;
+};
+
+async function getPosts(): Promise<PostRow[]> {
+  const { data, error } = await supabaseAdmin
+    .from('posts')
+    .select('id, slug, title, album_artist, album_title, standout_track, standout_producer, cover_art, body, rating, created_at, author')
+    .eq('published', true)
+    .order('created_at', { ascending: false });
+  if (error) {
+    console.error('[Blog] list error:', error.message);
+    return [];
+  }
+  return data || [];
+}
+
+/** Ten dots, filled to the score. Reads at a glance on a phone. */
+export function RatingDots({ rating }: { rating: number }) {
   return (
-    <div className="min-h-screen bg-black text-white pb-32">
+    <span className="inline-flex items-center gap-1" aria-label={`${rating} out of 10`}>
+      {Array.from({ length: 10 }, (_, i) => (
+        <span
+          key={i}
+          aria-hidden="true"
+          className={`w-1.5 h-1.5 rounded-full ${i < Math.round(rating) ? 'bg-orange-500' : 'bg-stone-700'}`}
+        />
+      ))}
+      <span className="ml-1.5 text-sm font-bold text-orange-400 tabular-nums">{rating}/10</span>
+    </span>
+  );
+}
+
+export default async function BlogPage() {
+  const posts = await getPosts();
+
+  return (
+    <div className="min-h-screen bg-black text-white pb-48 md:pb-32">
       <div className="max-w-4xl mx-auto px-6 pt-6">
         <Link href="/" className="inline-flex items-center gap-2 text-sm text-stone-500 hover:text-orange-400 transition-colors">
           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -14,36 +79,68 @@ export default function BlogPage() {
         </Link>
       </div>
 
-      <div className="max-w-4xl mx-auto px-6 py-12 text-center">
-        <h1 className="text-5xl md:text-6xl font-black tracking-tighter text-orange-50 mb-4">
+      <div className="max-w-4xl mx-auto px-6 py-12">
+        <h1 className="text-5xl md:text-6xl font-black tracking-tighter text-orange-50 mb-3">
           JST<span className="text-orange-500">.</span>BLOG
         </h1>
-        <p className="text-stone-500 text-lg mb-8">Music thoughts, album reviews, and behind the scenes.</p>
-        
-        <div className="inline-flex items-center gap-3 px-8 py-4 bg-orange-950/30 border border-orange-900/30 rounded-full">
-          <span className="relative flex h-3 w-3">
-            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-orange-400 opacity-75"></span>
-            <span className="relative inline-flex rounded-full h-3 w-3 bg-orange-500"></span>
-          </span>
-          <span className="text-orange-400 font-bold tracking-wide">COMING SOON</span>
-        </div>
+        <p className="text-stone-500 text-lg">Album reviews, scored out of 10.</p>
       </div>
 
-      <div className="max-w-4xl mx-auto px-6 space-y-6">
-        {[1, 2, 3].map((n) => (
-          <div key={n} className="border border-stone-800 rounded-xl p-6 bg-stone-900/30 opacity-40">
-            <div className="flex items-center gap-3 mb-3">
-              <div className="w-12 h-12 bg-stone-800 rounded-full" />
-              <div>
-                <div className="w-40 h-4 bg-stone-800 rounded mb-2" />
-                <div className="w-24 h-3 bg-stone-800 rounded" />
-              </div>
-            </div>
-            <div className="w-full h-48 bg-stone-800 rounded-lg mb-4" />
-            <div className="w-3/4 h-4 bg-stone-800 rounded mb-2" />
-            <div className="w-1/2 h-4 bg-stone-800 rounded" />
+      <div className="max-w-4xl mx-auto px-6">
+        {posts.length === 0 ? (
+          <div className="text-center py-20 border border-stone-800 rounded-xl bg-stone-900/30">
+            <p className="text-stone-500 text-lg">No reviews published yet.</p>
+            <p className="text-stone-600 text-sm mt-2">Check back soon.</p>
           </div>
-        ))}
+        ) : (
+          <div className="space-y-4">
+            {posts.map((post) => (
+              <Link
+                key={post.id}
+                href={`/blog/${post.slug}`}
+                className="block border border-stone-800 rounded-xl p-5 bg-stone-900/30 hover:bg-stone-900/60 hover:border-stone-700 transition-colors focus-visible:ring-2 focus-visible:ring-orange-500 outline-none"
+              >
+                <article className="flex gap-4">
+                  {post.cover_art && (
+                    <Image
+                      src={post.cover_art}
+                      alt=""
+                      width={80}
+                      height={80}
+                      className="w-20 h-20 rounded object-cover border border-stone-700 shrink-0"
+                    />
+                  )}
+                  <div className="min-w-0 flex-1">
+                    <h2 className="text-lg font-bold text-orange-100 mb-1">{post.title}</h2>
+                    {post.album_artist && (
+                      <p className="text-sm text-stone-400 mb-2 truncate">
+                        {post.album_artist}
+                        {post.album_title ? ` — ${post.album_title}` : ''}
+                      </p>
+                    )}
+                    <p className="text-sm text-stone-500 line-clamp-2 mb-2">{post.body.slice(0, 160)}</p>
+                    {post.standout_track && (
+                      <p className="text-xs text-stone-500 mb-2">
+                        <span className="text-stone-600">Best song:</span>{' '}
+                        <span className="text-orange-300">{post.standout_track}</span>
+                        {post.standout_producer && <span className="text-stone-500"> — {post.standout_producer}</span>}
+                      </p>
+                    )}
+                    <div className="flex items-center gap-4 flex-wrap">
+                      {post.rating !== null && <RatingDots rating={post.rating} />}
+                      <time className="text-xs text-stone-600" dateTime={post.created_at}>
+                        {new Date(post.created_at).toLocaleDateString('en-KE', {
+                          year: 'numeric', month: 'short', day: 'numeric',
+                        })}
+                      </time>
+                      <span className="text-xs text-stone-600">by {post.author}</span>
+                    </div>
+                  </div>
+                </article>
+              </Link>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );

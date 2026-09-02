@@ -7,7 +7,7 @@ export default function ArtMuseumPage() {
   const [showRegister, setShowRegister] = useState(false);
 
   return (
-    <div className="min-h-screen bg-black text-white pb-32">
+    <div className="min-h-screen bg-black text-white pb-48 md:pb-32">
       <div className="max-w-4xl mx-auto px-6 pt-6">
         <Link href="/" className="inline-flex items-center gap-2 text-sm text-stone-500 hover:text-orange-400 transition-colors">
           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">

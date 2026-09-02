@@ -45,8 +45,10 @@ export default function HomePage() {
               className="text-xl text-stone-400 max-w-md leading-relaxed"
               style={{ textWrap: 'balance' }}
             >
-              Premium beats for artists and producers. Buy exclusive WAV leases and
-              make your next hit.
+              Boom bap, drumless, alternative hip-hop and trap from{' '}
+              <span className="text-orange-300">jst.dan</span> and{' '}
+              <span className="text-orange-300">tisco prodz</span>. Pay with M-Pesa,
+              download the WAV or full stems the moment it clears.
             </p>
             <div className="flex flex-wrap gap-4">
               <Link
@@ -60,7 +62,7 @@ export default function HomePage() {
                 href="/about"
                 className="px-8 py-3 border border-stone-700 text-stone-300 font-bold rounded-full hover:border-orange-500 hover:text-orange-300 transition-all hover:scale-105 active:scale-95 focus-visible:ring-2 focus-visible:ring-orange-400 focus-visible:ring-offset-2 focus-visible:ring-offset-black outline-none touch-manipulation"
               >
-                About Me
+                Meet the producers
               </Link>
             </div>
           </div>
@@ -101,22 +103,23 @@ export default function HomePage() {
               className="text-4xl md:text-5xl font-serif italic tracking-tight"
               style={{ textWrap: 'balance' }}
             >
-              Find what&apos;s on
-              <br />
-              your mind.
+              Two producers.
+               <br />
+               Two catalogues.
             </h2>
             <p 
               className="text-orange-100 leading-relaxed max-w-md"
               style={{ textWrap: 'balance' }}
             >
-              Every beat starts with a feeling. Dig through the catalog and find the
-              one that matches your vision — from dark trap to melodic afro.
+              jst.dan works in boom bap, drumless and alternative hip-hop.
+              tisco prodz builds trap. They're kept as separate catalogues so
+              you're not digging through the wrong sound to find yours.
             </p>
             <Link
               href="/beats"
               className="inline-block px-6 py-2 border border-white/30 rounded-full text-sm font-medium hover:bg-white hover:text-orange-700 transition focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-orange-700 outline-none touch-manipulation"
             >
-              Explore Sounds &rarr;
+              Browse both catalogues &rarr;
             </Link>
           </div>
         </div>
@@ -142,16 +145,17 @@ export default function HomePage() {
               className="text-4xl md:text-5xl font-serif italic tracking-tight text-orange-50"
               style={{ textWrap: 'balance' }}
             >
-              Easily play an
+              Mixed. Mastered.
               <br />
-              <span className="text-orange-500">F# minor Jazz.</span>
+              <span className="text-orange-500">Ready to release.</span>
             </h2>
             <p 
               className="text-stone-400 leading-relaxed max-w-md"
               style={{ textWrap: 'balance' }}
             >
-              All beats are mixed and mastered ready for your vocals. Just add your
-              voice and release. No extra engineering needed.
+              Every beat ships mixed and mastered, with the BPM and key on the page
+              so you know what you&apos;re working with before you buy. Add vocals and
+              put it out — no extra engineering, no waiting.
             </p>
             <Link
               href="/about"
@@ -175,7 +179,7 @@ export default function HomePage() {
               >
                 Fresh Drops
               </h2>
-              <p className="text-stone-500 mt-2">Latest beats from the studio</p>
+              <p className="text-stone-500 mt-2">Newest instrumentals, WAV and stems</p>
             </div>
             <Link 
               href="/beats"
@@ -248,19 +252,20 @@ export default function HomePage() {
           className="text-3xl md:text-4xl font-bold mb-4"
           style={{ textWrap: 'balance' }}
         >
-          Want Custom Beats?
+          Want something made for you?
         </h2>
         <p 
           className="text-orange-100 mb-8 max-w-md mx-auto"
           style={{ textWrap: 'balance' }}
         >
-          I also take custom orders. Hit me up and let&apos;s cook something unique.
+          Both producers take custom work — a beat built around your reference,
+          your key, your tempo. Message either of us and we&apos;ll talk it through.
         </p>
         <Link
           href="/about"
           className="inline-block bg-white text-orange-700 px-8 py-3 rounded-full font-bold hover:bg-orange-100 transition-all hover:scale-105 active:scale-95 focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-orange-700 outline-none touch-manipulation"
         >
-          Get In Touch
+          Talk to a producer
         </Link>
       </section>
     </div>

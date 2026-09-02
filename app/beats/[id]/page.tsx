@@ -89,7 +89,10 @@ export default function BeatPage() {
     async function fetchBeat() {
       const { data, error } = await supabase
         .from('beats')
-        .select('id, title, bpm, key, genre, cover_art, snippet_url, price_mp3, price_wav, price_stems, stems_url, tags, created_at')
+        // stems_url is deliberately NOT selected: it's a path into the PRIVATE
+        // bucket and this query runs with the public anon key. Stems availability
+        // is signalled by price_stems alone (same rule as useCartStore).
+        .select('id, title, bpm, key, genre, cover_art, snippet_url, price_mp3, price_wav, price_stems, tags, created_at')
         .eq('id', id)
         .single();
 
@@ -100,9 +103,12 @@ export default function BeatPage() {
     fetchBeat();
   }, [id]);
 
+  // Track the SELECTED licence, not just the beat. Checking the beat alone
+  // meant adding the WAV also marked Stems as "added", and the guard in
+  // handleAddToCart then refused to add it — you could never buy both.
   useEffect(() => {
-    if (beat) setAdded(isInCart(beat.id));
-  }, [beat, isInCart]);
+    if (beat) setAdded(isInCart(beat.id, selectedLicense));
+  }, [beat, isInCart, selectedLicense]);
 
   if (loading) {
     return (
@@ -123,7 +129,9 @@ export default function BeatPage() {
   }
 
   const isThisPlaying = currentBeatId === beat.id && isPlaying;
-  const hasStems = beat.price_stems > 0 && !!beat.stems_url;
+  // price_stems > 0 is the single source of truth for "stems are on sale".
+  // The real file is only ever handed over by /api/orders/download after payment.
+  const hasStems = beat.price_stems > 0;
   const currentPrice = selectedLicense === 'stems' && hasStems ? beat.price_stems : beat.price_wav;
 
   const handlePlay = () => {
@@ -138,7 +146,7 @@ export default function BeatPage() {
   };
 
   return (
-    <div className="min-h-screen bg-black text-white pb-32">
+    <div className="min-h-screen bg-black text-white pb-48 md:pb-32">
       <div className="max-w-4xl mx-auto px-6 pt-6">
         <Link href="/" className="inline-flex items-center gap-2 text-sm text-stone-500 hover:text-orange-400 transition-colors">
           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">

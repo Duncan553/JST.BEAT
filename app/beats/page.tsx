@@ -1,22 +1,26 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useBeatsStore } from '@/stores/useBeatsStore';
 import { BeatChip } from '@/components/beat-chip/BeatChip';
 import { Beat } from '@/types/beat';
+import { CatalogSearch, matchesQuery } from '@/components/CatalogSearch';
 import Link from 'next/link';
 
 const PRODUCERS = ['jst.dan', 'tisco prodz'] as const;
 
 export default function BeatsPage() {
   const { beats, loading, error, fetchBeats } = useBeatsStore();
+  // One query per producer, so searching jst.dan's catalogue never hides
+  // tisco's — the two lists stay independent, which is the whole point.
+  const [queries, setQueries] = useState<Record<string, string>>({});
 
   useEffect(() => {
     fetchBeats();
   }, [fetchBeats]);
 
   return (
-    <div className="min-h-screen bg-black text-white pb-32">
+    <div className="min-h-screen bg-black text-white pb-48 md:pb-32">
       {/* Header */}
       <div className="max-w-6xl mx-auto px-6 pt-6">
         <Link
@@ -76,14 +80,42 @@ export default function BeatsPage() {
           // never merged into one flat list.
           PRODUCERS.map((producer) => {
             const producerBeats = beats.filter((b: Beat) => b.producer === producer);
+            const query = queries[producer] || '';
+            const visible = producerBeats.filter((b: Beat) =>
+              matchesQuery(query, [b.title, b.genre, b.key, b.bpm, b.tags])
+            );
             return (
               <div key={producer} className="mb-14">
-                <h2 className="text-2xl font-bold text-orange-100 mb-4">{producer}</h2>
+                <h2 className="text-2xl font-bold text-orange-100 mb-1">{producer}</h2>
+                <p className="text-sm text-stone-600 mb-4">
+                  {producerBeats.length} beat{producerBeats.length === 1 ? '' : 's'}
+                </p>
+
+                {producerBeats.length > 0 && (
+                  <CatalogSearch
+                    value={query}
+                    onChange={(v) => setQueries((q) => ({ ...q, [producer]: v }))}
+                    placeholder={`Search ${producer} — title, genre, key, BPM`}
+                    resultCount={visible.length}
+                    totalCount={producerBeats.length}
+                  />
+                )}
+
                 {producerBeats.length === 0 ? (
                   <p className="text-stone-600 text-sm">No beats from {producer} yet.</p>
+                ) : visible.length === 0 ? (
+                  <p className="text-stone-600 text-sm">
+                    Nothing in {producer}&apos;s catalogue matches that.{' '}
+                    <button
+                      onClick={() => setQueries((q) => ({ ...q, [producer]: '' }))}
+                      className="text-orange-500 hover:text-orange-400 underline focus-visible:ring-2 focus-visible:ring-orange-500 rounded outline-none"
+                    >
+                      Clear search
+                    </button>
+                  </p>
                 ) : (
                   <div className="flex flex-wrap gap-3">
-                    {producerBeats.map((beat) => (
+                    {visible.map((beat) => (
                       <BeatChip key={beat.id} beat={beat} />
                     ))}
                   </div>

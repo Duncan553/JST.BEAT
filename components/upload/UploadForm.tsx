@@ -3,7 +3,6 @@
 import { useState } from 'react';
 import { useBeatsStore } from '@/stores/useBeatsStore';
 import { supabase } from '@/lib/supabase';
-import { toKes, Currency } from '@/lib/currency';
 
 export function UploadForm() {
   const { addBeat } = useBeatsStore();
@@ -13,7 +12,6 @@ export function UploadForm() {
   const [genre, setGenre] = useState('');
   const [priceWav, setPriceWav] = useState('');
   const [priceStems, setPriceStems] = useState('');
-  const [priceCurrency, setPriceCurrency] = useState<Currency>('KES');
   const [tags, setTags] = useState('');
   const [audioFile, setAudioFile] = useState<File | null>(null);
   const [snippetFile, setSnippetFile] = useState<File | null>(null);
@@ -38,11 +36,11 @@ export function UploadForm() {
       formData.append('bpm', bpm);
       formData.append('key', key.trim());
       formData.append('genre', genre.trim());
-      // Producer can type prices in KES or USD (whichever they think in) —
-      // always normalized to KES here, before it leaves the browser. The
-      // server, DB, and Paystack only ever see KES.
-      formData.append('price_wav', String(toKes(Number(priceWav), priceCurrency)));
-      formData.append('price_stems', priceStems ? String(toKes(Number(priceStems), priceCurrency)) : '0');
+      // Beats are priced in USD, full stop. The KES a Kenyan buyer pays is
+      // derived server-side from a cached rate (lib/pricing.ts) — there is no
+      // second price to keep in sync, and Paystack still only ever sees KES.
+      formData.append('price_usd_wav', priceWav);
+      formData.append('price_usd_stems', priceStems || '0');
       formData.append('tags', tags.trim());
       formData.append('audio', audioFile);
       if (snippetFile) {
@@ -77,7 +75,7 @@ export function UploadForm() {
 
       setMessage('Beat uploaded successfully!');
       setTitle(''); setBpm(''); setKey(''); setGenre('');
-      setPriceWav(''); setPriceStems(''); setPriceCurrency('KES'); setTags('');
+      setPriceWav(''); setPriceStems(''); setTags('');
       setAudioFile(null); setSnippetFile(null); setCoverFile(null); setStemsFile(null);
       
       // Reset file inputs
@@ -141,29 +139,9 @@ export function UploadForm() {
             />
           </div>
         </div>
-        <div>
-          <label className="block text-sm font-medium mb-1 text-stone-300">Price currency</label>
-          <div className="flex gap-2">
-            {(['KES', 'USD'] as const).map((c) => (
-              <button
-                key={c}
-                type="button"
-                onClick={() => setPriceCurrency(c)}
-                className={`px-4 py-1.5 rounded-full text-sm font-bold border transition ${
-                  priceCurrency === c
-                    ? 'bg-orange-600 border-orange-600 text-white'
-                    : 'border-stone-700 text-stone-400 hover:border-orange-500 hover:text-orange-300'
-                }`}
-              >
-                {c === 'KES' ? 'KSh' : 'USD'}
-              </button>
-            ))}
-          </div>
-          <p className="text-xs text-stone-600 mt-1">Type prices below in this currency — stored as KSh either way, that&apos;s all Paystack/M-Pesa can charge.</p>
-        </div>
         <div className="grid grid-cols-2 gap-4">
           <div>
-            <label className="block text-sm font-medium mb-1 text-stone-300">WAV Price ({priceCurrency === 'USD' ? 'USD' : 'KSh'}) <span className="text-red-500">*</span></label>
+            <label className="block text-sm font-medium mb-1 text-stone-300">WAV Price (USD) <span className="text-red-500">*</span></label>
             <input
               type="number"
               step="0.01"
@@ -174,7 +152,7 @@ export function UploadForm() {
             />
           </div>
           <div>
-            <label className="block text-sm font-medium mb-1 text-stone-300">Stems Price ({priceCurrency === 'USD' ? 'USD' : 'KSh'}) <span className="text-stone-500 text-xs">(optional)</span></label>
+            <label className="block text-sm font-medium mb-1 text-stone-300">Stems Price (USD) <span className="text-stone-500 text-xs">(optional)</span></label>
             <input
               type="number"
               step="0.01"

@@ -50,12 +50,19 @@ export async function GET(req: NextRequest) {
     }
 
     const items = (order.items as any[]) || [];
-    const beatIds = [...new Set(items.map((i) => i.beat_id).filter(Boolean))];
 
-    const { data: beats, error: beatsError } = await supabaseAdmin
-      .from("beats")
-      .select("id, title, full_url, stems_url")
-      .in("id", beatIds);
+    // An order can mix beats and store releases. They live in different
+    // tables and a release fans out into one file per track, so they're
+    // resolved separately.
+    const beatItems = items.filter((i) => i.kind !== 'release');
+    const releaseItems = items.filter((i) => i.kind === 'release');
+
+    const beatIds = [...new Set(beatItems.map((i) => i.beat_id).filter(Boolean))];
+    const releaseIds = [...new Set(releaseItems.map((i) => i.beat_id).filter(Boolean))];
+
+    const { data: beats, error: beatsError } = beatIds.length
+      ? await supabaseAdmin.from("beats").select("id, title, full_url, stems_url").in("id", beatIds)
+      : { data: [], error: null };
 
     if (beatsError || !beats) {
       return NextResponse.json(
@@ -67,7 +74,48 @@ export async function GET(req: NextRequest) {
     const beatsById = new Map(beats.map((b) => [b.id, b]));
     const downloads: Array<{ beat_id: string; title: string; url: string; license: string }> = [];
 
-    for (const item of items) {
+    // Signs a private-bucket URL. Returns null and logs rather than throwing,
+    // so one broken file can't cost the buyer the rest of their order.
+    const signPrivate = async (fileUrl: string | null): Promise<string | null> => {
+      if (!fileUrl) return null;
+      const path = extractStoragePath(fileUrl, 'beats-private');
+      if (!path) return null;
+      const { data: signed, error } = await supabaseAdmin.storage
+        .from("beats-private")
+        .createSignedUrl(path, 300); // 5-minute link
+      if (error || !signed) {
+        console.error(`[Download] Could not sign ${path}:`, error?.message);
+        return null;
+      }
+      return signed.signedUrl;
+    };
+
+    // --- store releases: every track of a paid release ---
+    if (releaseIds.length) {
+      const { data: releases } = await supabaseAdmin
+        .from("releases")
+        .select("id, title, tracks(title, track_number, full_url)")
+        .in("id", releaseIds);
+
+      for (const release of releases || []) {
+        const tracks = [...((release as any).tracks || [])].sort(
+          (a: any, b: any) => a.track_number - b.track_number
+        );
+        for (const track of tracks) {
+          const url = await signPrivate(track.full_url);
+          if (!url) continue;
+          downloads.push({
+            beat_id: release.id,
+            title: `${release.title} — ${String(track.track_number).padStart(2, '0')}. ${track.title}`,
+            url,
+            license: 'release',
+          });
+        }
+      }
+    }
+
+    // --- beats ---
+    for (const item of beatItems) {
       const beat = beatsById.get(item.beat_id);
       if (!beat) continue;
 
@@ -86,23 +134,14 @@ export async function GET(req: NextRequest) {
         continue;
       }
 
-      const path = extractStoragePath(fileUrl, 'beats-private');
-      if (!path) continue;
+      const url = await signPrivate(fileUrl);
+      if (!url) continue;
 
-      const { data: signed, error: signError } = await supabaseAdmin.storage
-        .from("beats-private")
-        .createSignedUrl(path, 300); // 5-minute link
-
-      if (signError || !signed) {
-        console.error(`[Download] Could not sign URL for ${path}:`, signError?.message);
-        continue;
-      }
-
-      downloads.push({ 
-        beat_id: beat.id, 
-        title: beat.title, 
-        url: signed.signedUrl,
-        license: item.license
+      downloads.push({
+        beat_id: beat.id,
+        title: beat.title,
+        url,
+        license: item.license,
       });
     }
 

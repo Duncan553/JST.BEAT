@@ -1,11 +1,32 @@
-'use client';
-
 import Link from 'next/link';
+import Image from 'next/image';
+import type { Metadata } from 'next';
+import { getPublishedReleases } from '@/lib/store';
+import { absoluteUrl, SITE_NAME } from '@/lib/site';
+import { StoreBrowser } from '@/components/store/StoreBrowser';
 
-export default function StorePage() {
+// Rendered on the server so the catalogue is in the HTML for Google.
+export const revalidate = 300;
+
+export const metadata: Metadata = {
+  title: 'Store — Singles & Albums',
+  description:
+    'Buy singles and albums from jst.dan and tisco prodz. Stream any release free, pay with M-Pesa to download.',
+  alternates: { canonical: absoluteUrl('/store') },
+  openGraph: {
+    title: `Store — ${SITE_NAME}`,
+    description: 'Stream free. Pay with M-Pesa to download.',
+    url: absoluteUrl('/store'),
+    type: 'website',
+  },
+};
+
+export default async function StorePage() {
+  const releases = await getPublishedReleases();
+
   return (
-    <div className="min-h-screen bg-black text-white pb-32">
-      <div className="max-w-4xl mx-auto px-6 pt-6">
+    <div className="min-h-screen bg-black text-white pb-48 md:pb-32">
+      <div className="max-w-6xl mx-auto px-6 pt-6">
         <Link href="/" className="inline-flex items-center gap-2 text-sm text-stone-500 hover:text-orange-400 transition-colors">
           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
@@ -14,29 +35,22 @@ export default function StorePage() {
         </Link>
       </div>
 
-      <div className="max-w-4xl mx-auto px-6 py-12 text-center">
-        <h1 className="text-5xl md:text-6xl font-black tracking-tighter text-orange-50 mb-4">
-          JST<span className="text-orange-500">.</span>STORE
-        </h1>
-        <p className="text-stone-500 text-lg mb-8">Albums, merch, and exclusive drops.</p>
-        
-        <div className="inline-flex items-center gap-3 px-8 py-4 bg-orange-950/30 border border-orange-900/30 rounded-full">
-          <span className="relative flex h-3 w-3">
-            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-orange-400 opacity-75"></span>
-            <span className="relative inline-flex rounded-full h-3 w-3 bg-orange-500"></span>
-          </span>
-          <span className="text-orange-400 font-bold tracking-wide">COMING SOON</span>
-        </div>
+      <div className="max-w-6xl mx-auto px-6 py-12">
+        <h1 className="text-4xl md:text-5xl font-black tracking-tighter text-orange-50 mb-2">Store</h1>
+        <p className="text-stone-500">
+          Singles and albums. Play anything free — pay only when you want the file.
+        </p>
       </div>
 
-      <div className="max-w-4xl mx-auto px-6 grid grid-cols-2 md:grid-cols-3 gap-4">
-        {[1, 2, 3, 4, 5, 6].map((n) => (
-          <div key={n} className="border border-stone-800 rounded-xl p-4 bg-stone-900/30 opacity-40">
-            <div className="aspect-square bg-stone-800 rounded-lg mb-3" />
-            <div className="w-3/4 h-4 bg-stone-800 rounded mb-2" />
-            <div className="w-1/2 h-4 bg-stone-800 rounded" />
+      <div className="max-w-6xl mx-auto px-6">
+        {releases.length === 0 ? (
+          <div className="text-center py-20 border border-stone-800 rounded-xl bg-stone-900/30">
+            <p className="text-stone-500 text-lg">Nothing in the store yet.</p>
+            <p className="text-stone-600 text-sm mt-2">Check back soon.</p>
           </div>
-        ))}
+        ) : (
+          <StoreBrowser releases={releases} />
+        )}
       </div>
     </div>
   );

@@ -6,13 +6,15 @@ import Image from 'next/image';
 import { useAuthStore } from '@/stores/useAuthStore';
 import { useBeatsStore } from '@/stores/useBeatsStore';
 import { UploadForm } from '@/components/upload/UploadForm';
+import { ReleaseUploadForm } from '@/components/store/ReleaseUploadForm';
+import { PostEditor } from '@/components/blog/PostEditor';
 import { supabase } from '@/lib/supabase';
 import { Beat } from '@/types/beat';
 
 type Tab = 'beats' | 'store' | 'blog' | 'art' | 'earnings' | 'profile';
 
 export default function DashboardPage() {
-  const { isLoggedIn, logout, user } = useAuthStore();
+  const { isLoggedIn, logout, user, isLoading } = useAuthStore();
   const { beats, loading, fetchBeats, updateBeat, removeBeat } = useBeatsStore();
   const router = useRouter();
   const [activeTab, setActiveTab] = useState<Tab>('beats');
@@ -33,28 +35,44 @@ export default function DashboardPage() {
   const [profileLoading, setProfileLoading] = useState(false);
   const [profileSaving, setProfileSaving] = useState(false);
   const [profileMessage, setProfileMessage] = useState('');
+  const [releases, setReleases] = useState<any[]>([]);
+  const [releasesLoading, setReleasesLoading] = useState(false);
+  const [posts, setPosts] = useState<any[]>([]);
+  const [postsLoading, setPostsLoading] = useState(false);
+  const [editingPost, setEditingPost] = useState<any>(null);
 
   useEffect(() => {
     setMounted(true);
   }, []);
 
   useEffect(() => {
-    if (!mounted) return;
+    // Wait for initAuth's getSession() to finish before judging. isLoggedIn
+    // is false while auth is still loading, so redirecting on it directly
+    // kicks a genuinely logged-in producer straight back to /login.
+    if (!mounted || isLoading) return;
     if (!isLoggedIn) {
       router.replace('/login');
       return;
     }
     fetchBeats();
-  }, [isLoggedIn, mounted, router, fetchBeats]);
+  }, [isLoggedIn, isLoading, mounted, router, fetchBeats]);
 
   const handleDelete = async (beat: Beat) => {
     if (!window.confirm(`Delete "${beat.title}"? This cannot be undone.`)) return;
 
-    const { error: dbError } = await supabase.from('beats').delete().eq('id', beat.id);
-    
+    // Same RLS trap as saveEdit — a blocked delete comes back as 0 rows with
+    // no error. Without the row-count check we'd sail on and delete the audio
+    // files below, leaving the beat listed but with every link dead.
+    const { data: deleted, error: dbError } = await supabase
+      .from('beats').delete().eq('id', beat.id).select();
+
     if (dbError) {
       console.error('Delete failed:', dbError);
       setMessage(`Error: ${dbError.message}`);
+      return;
+    }
+    if (!deleted || deleted.length === 0) {
+      setMessage('Error: nothing was deleted — the database rejected it. Files left untouched.');
       return;
     }
 
@@ -106,16 +124,79 @@ export default function DashboardPage() {
       updates.price_stems = newPriceStems;
     }
 
-    const { error } = await supabase.from('beats').update(updates).eq('id', beatId);
+    // `.select()` matters: when RLS blocks an update, PostgREST returns
+    // ZERO rows and error === null. Checking only `error` made this report
+    // "Updated successfully" while the price never actually changed.
+    const { data, error } = await supabase
+      .from('beats').update(updates).eq('id', beatId).select();
 
-    if (!error) {
-      updateBeat(beatId, updates);
-      setEditing(null);
-      setMessage('Updated successfully');
-      setTimeout(() => setMessage(''), 2000);
-    } else {
+    if (error) {
       setMessage(`Error: ${error.message}`);
+      return;
     }
+    if (!data || data.length === 0) {
+      setMessage('Error: nothing was saved — the database rejected the update (check the beats UPDATE policy).');
+      return;
+    }
+
+    updateBeat(beatId, updates);
+    setEditing(null);
+    setMessage('Updated successfully');
+    setTimeout(() => setMessage(''), 2000);
+  };
+
+  // Releases are read with the logged-in client, not the admin one: RLS lets
+  // a producer see their own drafts, and the public only ever sees published.
+  const loadReleases = async () => {
+    setReleasesLoading(true);
+    const { data, error } = await supabase
+      .from('releases')
+      .select('*, tracks(id, title, track_number)')
+      .order('created_at', { ascending: false });
+    if (error) setMessage(`Error loading releases: ${error.message}`);
+    else setReleases(data || []);
+    setReleasesLoading(false);
+  };
+
+  const togglePublish = async (release: any) => {
+    const { data, error } = await supabase
+      .from('releases')
+      .update({ published: !release.published })
+      .eq('id', release.id)
+      .select();
+    // Same 0-rows-no-error trap as the beats editor — check the row count.
+    if (error) { setMessage(`Error: ${error.message}`); return; }
+    if (!data || data.length === 0) { setMessage('Error: nothing changed — the database rejected it.'); return; }
+    loadReleases();
+  };
+
+  const deleteRelease = async (release: any) => {
+    if (!window.confirm(`Delete "${release.title}" and all its tracks? This cannot be undone.`)) return;
+    // tracks cascade via the foreign key, so one delete clears both tables.
+    const { data, error } = await supabase.from('releases').delete().eq('id', release.id).select();
+    if (error) { setMessage(`Error: ${error.message}`); return; }
+    if (!data || data.length === 0) { setMessage('Error: nothing was deleted.'); return; }
+    setMessage('Release deleted');
+    setTimeout(() => setMessage(''), 2000);
+    loadReleases();
+  };
+
+  const loadPosts = async () => {
+    setPostsLoading(true);
+    const { data, error } = await supabase
+      .from('posts').select('*').order('created_at', { ascending: false });
+    if (error) setMessage(`Error loading posts: ${error.message}`);
+    else setPosts(data || []);
+    setPostsLoading(false);
+  };
+
+  const deletePost = async (post: any) => {
+    if (!window.confirm(`Delete "${post.title}"? This cannot be undone.`)) return;
+    const { data, error } = await supabase.from('posts').delete().eq('id', post.id).select();
+    if (error) { setMessage(`Error: ${error.message}`); return; }
+    if (!data || data.length === 0) { setMessage('Error: nothing was deleted.'); return; }
+    if (editingPost?.id === post.id) setEditingPost(null);
+    loadPosts();
   };
 
   const tabs: { key: Tab; label: string }[] = [
@@ -241,7 +322,17 @@ export default function DashboardPage() {
     if (activeTab === 'profile' && isLoggedIn) loadProfile();
   }, [activeTab, isLoggedIn]);
 
-  if (!mounted || !isLoggedIn) {
+  useEffect(() => {
+    if (activeTab === 'store' && isLoggedIn) loadReleases();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab, isLoggedIn]);
+
+  useEffect(() => {
+    if (activeTab === 'blog' && isLoggedIn) loadPosts();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab, isLoggedIn]);
+
+  if (!mounted || isLoading || !isLoggedIn) {
     return (
       <div className="max-w-4xl mx-auto p-6 bg-black text-white min-h-screen">
         <p className="text-stone-400">Loading...</p>
@@ -381,31 +472,106 @@ export default function DashboardPage() {
 
       {/* STORE TAB */}
       {activeTab === 'store' && (
-        <div className="text-center py-20 border border-stone-800 rounded-xl bg-stone-900/30">
-          <div className="inline-flex items-center gap-3 px-6 py-3 bg-orange-950/30 border border-orange-900/30 rounded-full mb-4">
-            <span className="relative flex h-3 w-3">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-orange-400 opacity-75"></span>
-              <span className="relative inline-flex rounded-full h-3 w-3 bg-orange-500"></span>
-            </span>
-            <span className="text-orange-400 font-bold tracking-wide">COMING SOON</span>
+        <div className="space-y-8">
+          <ReleaseUploadForm onCreated={loadReleases} />
+
+          <div>
+            <h2 className="text-xl font-bold mb-4 text-orange-50">Your releases ({releases.length})</h2>
+            {releasesLoading ? (
+              <p className="text-stone-500">Loading...</p>
+            ) : releases.length === 0 ? (
+              <p className="text-stone-500">Nothing uploaded yet.</p>
+            ) : (
+              <div className="space-y-3">
+                {releases.map((r: any) => (
+                  <div key={r.id} className="border border-stone-800 rounded-lg p-4 flex flex-col sm:flex-row sm:items-center gap-4 bg-stone-900/40">
+                    <div
+                      className="w-16 h-16 bg-stone-800 rounded bg-cover bg-center shrink-0 border border-stone-700"
+                      style={{ backgroundImage: `url(${r.cover_art})` }}
+                    />
+                    <div className="min-w-0 flex-1">
+                      <h3 className="font-bold text-orange-100 truncate">{r.title}</h3>
+                      <p className="text-sm text-stone-400">
+                        {r.artist || 'No artist set'} · {r.kind} · {r.tracks?.length ?? 0} track{(r.tracks?.length ?? 0) === 1 ? '' : 's'}
+                      </p>
+                      <p className="text-xs text-stone-600 mt-1">KSh {r.price} · {r.producer}</p>
+                    </div>
+                    <div className="flex items-center gap-3 shrink-0">
+                      <span className={`text-xs px-2 py-1 rounded-full ${r.published ? 'bg-green-950/50 text-green-400' : 'bg-stone-800 text-stone-400'}`}>
+                        {r.published ? 'Live' : 'Hidden'}
+                      </span>
+                      <button
+                        onClick={() => togglePublish(r)}
+                        className="text-sm bg-orange-600 text-white px-3 py-1 rounded hover:bg-orange-500 transition focus-visible:ring-2 focus-visible:ring-orange-500 outline-none touch-manipulation"
+                      >
+                        {r.published ? 'Unpublish' : 'Publish'}
+                      </button>
+                      <button
+                        onClick={() => deleteRelease(r)}
+                        className="text-sm text-red-400 hover:text-red-300 focus-visible:ring-2 focus-visible:ring-red-500 rounded outline-none touch-manipulation"
+                      >
+                        Delete
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
-          <p className="text-stone-500">Store management will be here.</p>
-          <p className="text-stone-600 text-sm mt-2">Add albums, merch, and exclusive drops.</p>
         </div>
       )}
 
       {/* BLOG TAB */}
       {activeTab === 'blog' && (
-        <div className="text-center py-20 border border-stone-800 rounded-xl bg-stone-900/30">
-          <div className="inline-flex items-center gap-3 px-6 py-3 bg-orange-950/30 border border-orange-900/30 rounded-full mb-4">
-            <span className="relative flex h-3 w-3">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-orange-400 opacity-75"></span>
-              <span className="relative inline-flex rounded-full h-3 w-3 bg-orange-500"></span>
-            </span>
-            <span className="text-orange-400 font-bold tracking-wide">COMING SOON</span>
+        <div className="space-y-8">
+          <PostEditor
+            editing={editingPost}
+            onSaved={() => { setEditingPost(null); loadPosts(); }}
+            onCancel={() => setEditingPost(null)}
+          />
+
+          <div>
+            <h2 className="text-xl font-bold mb-4 text-orange-50">Your posts ({posts.length})</h2>
+            {postsLoading ? (
+              <p className="text-stone-500">Loading...</p>
+            ) : posts.length === 0 ? (
+              <p className="text-stone-500">Nothing written yet.</p>
+            ) : (
+              <div className="space-y-3">
+                {posts.map((p: any) => (
+                  <div key={p.id} className="border border-stone-800 rounded-lg p-4 flex flex-col sm:flex-row sm:items-center gap-4 bg-stone-900/40">
+                    {p.cover_art && (
+                      <div className="w-16 h-16 bg-stone-800 rounded bg-cover bg-center shrink-0 border border-stone-700"
+                        style={{ backgroundImage: `url(${p.cover_art})` }} />
+                    )}
+                    <div className="min-w-0 flex-1">
+                      <h3 className="font-bold text-orange-100 truncate">{p.title}</h3>
+                      <p className="text-sm text-stone-400 truncate">
+                        {p.album_artist ? `${p.album_artist}${p.album_title ? ' — ' + p.album_title : ''}` : 'No album linked'}
+                      </p>
+                      <p className="text-xs text-stone-600 mt-1">/blog/{p.slug} · {p.author}</p>
+                    </div>
+                    <div className="flex items-center gap-3 shrink-0">
+                      {p.rating !== null && (
+                        <span className="text-sm font-bold text-orange-400 tabular-nums">{p.rating}/10</span>
+                      )}
+                      <span className={`text-xs px-2 py-1 rounded-full ${p.published ? 'bg-green-950/50 text-green-400' : 'bg-stone-800 text-stone-400'}`}>
+                        {p.published ? 'Live' : 'Draft'}
+                      </span>
+                      <button onClick={() => setEditingPost(p)}
+                        className="text-sm bg-orange-600 text-white px-3 py-1 rounded hover:bg-orange-500 transition focus-visible:ring-2 focus-visible:ring-orange-500 outline-none touch-manipulation">
+                        Edit
+                      </button>
+                      <button onClick={() => deletePost(p)}
+                        className="text-sm text-red-400 hover:text-red-300 focus-visible:ring-2 focus-visible:ring-red-500 rounded outline-none touch-manipulation">
+                        Delete
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
-          <p className="text-stone-500">Blog management will be here.</p>
-          <p className="text-stone-600 text-sm mt-2">Write posts and review albums.</p>
         </div>
       )}
 

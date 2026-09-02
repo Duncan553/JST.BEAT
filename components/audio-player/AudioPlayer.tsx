@@ -114,7 +114,7 @@ export function AudioPlayer() {
 
   return (
     <div 
-      className="fixed bottom-0 left-0 right-0 z-50 bg-gradient-to-t from-black via-black/98 to-stone-950/95 backdrop-blur-xl border-t border-stone-800/30"
+      className="fixed bottom-16 md:bottom-0 left-0 right-0 z-50 bg-gradient-to-t from-black via-black/98 to-stone-950/95 backdrop-blur-xl border-t border-stone-800/30"
       role="region"
       aria-label="Audio player"
     >

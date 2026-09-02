@@ -27,6 +27,8 @@ function CartPageInner() {
   const [phone, setPhone] = useState('');
   const [email, setEmail] = useState('');
   const [method, setMethod] = useState<'mpesa' | 'card'>('mpesa');
+  // KES -> Paystack (M-Pesa or card). USD -> Flutterwave.
+  const [currency, setCurrency] = useState<'KES' | 'USD'>('KES');
   const [paying, setPaying] = useState(false);
   const [paid, setPaid] = useState(false);
   const [stkSent, setStkSent] = useState(false);
@@ -50,7 +52,7 @@ function CartPageInner() {
       setMessage('Enter a valid email address. Paystack requires it for receipts.');
       return;
     }
-    if (method === 'mpesa' && !validatePhone(phone)) {
+    if (currency === 'KES' && method === 'mpesa' && !validatePhone(phone)) {
       setMessage('Enter a valid M-Pesa phone number (e.g. 0712345678).');
       return;
     }
@@ -70,11 +72,15 @@ function CartPageInner() {
           email,
           phone,
           method,
+          currency,
           items: items.map(i => ({
             title: i.beat.title,
             beat_id: i.beat.id,
             license: i.license,
             price: i.price,
+            // Tells the server which table to price this from. Beats and
+            // store releases share one cart but not one catalogue.
+            kind: (i.beat as any).kind === 'release' ? 'release' : 'beat',
           })),
         }),
       });
@@ -82,7 +88,7 @@ function CartPageInner() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.message || 'Payment failed.');
 
-      if (data.method === 'card') {
+      if (data.method === 'card' || data.currency === 'USD') {
         // Full redirect to Paystack's hosted card page — cart is in
         // localStorage so it survives the trip. They land back on /cart
         // with ?reference=... which the mount effect above picks up.
@@ -188,9 +194,11 @@ function CartPageInner() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const handleRemove = (beatId: string, title: string) => {
-    if (window.confirm(`Remove "${title}" from your cart?`)) {
-      removeItem(beatId);
+  // Licence is part of the identity now — a cart can hold the WAV and the
+  // Stems of the same beat, and Remove must only drop the one you clicked.
+  const handleRemove = (beatId: string, license: 'wav' | 'stems', title: string) => {
+    if (window.confirm(`Remove "${title}" (${license.toUpperCase()}) from your cart?`)) {
+      removeItem(beatId, license);
     }
   };
 
@@ -228,7 +236,7 @@ function CartPageInner() {
   }
 
   return (
-    <div className="max-w-2xl mx-auto p-6 pb-32">
+    <div className="max-w-2xl mx-auto p-6 pb-48 md:pb-32">
       <h1 className="text-2xl font-bold mb-1 text-orange-100">Checkout</h1>
       <p className="text-sm text-stone-500 mb-6">{items.length} beat{items.length !== 1 ? 's' : ''} in your order</p>
 
@@ -239,7 +247,7 @@ function CartPageInner() {
           </div>
           <div className="divide-y divide-stone-800">
             {items.map((item) => (
-              <div key={item.beat.id} className="flex items-center gap-3 p-4">
+              <div key={`${item.beat.id}-${item.license}`} className="flex items-center gap-3 p-4">
                 <div
                   className="w-12 h-12 rounded-lg bg-stone-800 bg-cover bg-center shrink-0 border border-stone-700"
                   style={item.beat.cover_art ? { backgroundImage: `url(${item.beat.cover_art})` } : undefined}
@@ -251,7 +259,7 @@ function CartPageInner() {
                 </div>
                 <div className="flex items-center gap-3 shrink-0">
                   <span className="font-bold text-orange-100 tabular-nums text-sm">KSh {item.price}</span>
-                  <button onClick={() => handleRemove(item.beat.id, item.beat.title)} className="text-red-400 text-xs hover:underline focus-visible:ring-2 focus-visible:ring-red-500 rounded outline-none touch-manipulation">
+                  <button onClick={() => handleRemove(item.beat.id, item.license, item.beat.title)} className="text-red-400 text-xs hover:underline focus-visible:ring-2 focus-visible:ring-red-500 rounded outline-none touch-manipulation">
                     Remove
                   </button>
                 </div>
@@ -269,7 +277,34 @@ function CartPageInner() {
         <div className="space-y-4">
           {!stkSent ? (
             <>
+              {/* Currency. Beats carry a dollar price; the shilling figure is
+                  worked out server-side, so both buttons charge the same beat. */}
+              <p className="text-xs font-bold text-stone-500 uppercase tracking-wide mb-1">Pay in</p>
+              <div className="flex gap-2 mb-4">
+                {(['KES', 'USD'] as const).map((c) => (
+                  <button
+                    key={c}
+                    type="button"
+                    onClick={() => { setCurrency(c); if (c === 'USD') setMethod('card'); setMessage(''); }}
+                    className={`flex-1 py-3 rounded-lg border font-bold text-sm transition ${
+                      currency === c
+                        ? 'bg-orange-950/40 border-orange-500 text-orange-300'
+                        : 'border-stone-700 text-stone-400 hover:border-orange-500/50'
+                    }`}
+                  >
+                    {c === 'KES' ? 'KSh · M-Pesa or card' : 'USD · card'}
+                  </button>
+                ))}
+              </div>
+              {currency === 'USD' && (
+                <p className="text-xs text-stone-500 mb-3">
+                  Dollar payments go through Flutterwave. Store releases are KSh only.
+                </p>
+              )}
+
               {/* Payment method */}
+              {currency === 'KES' && (
+              <>
               <p className="text-xs font-bold text-stone-500 uppercase tracking-wide mb-1">Payment method</p>
               <div className="flex gap-2 mb-2">
                 <button
@@ -293,8 +328,17 @@ function CartPageInner() {
                   Card
                 </button>
               </div>
+              </>
+              )}
 
-              {method === 'mpesa' ? (
+              {currency === 'USD' ? (
+                <div className="p-4 bg-orange-950/20 border border-orange-900/30 rounded-xl mb-4">
+                  <h3 className="font-bold text-orange-400 mb-1">Card payment in US dollars</h3>
+                  <p className="text-sm text-orange-300/80">
+                    You&apos;ll be taken to Flutterwave&apos;s secure page. We never see your card number.
+                  </p>
+                </div>
+              ) : method === 'mpesa' ? (
                 <div className="p-4 bg-green-950/20 border border-green-900/30 rounded-xl mb-4">
                   <div className="flex items-center gap-3 mb-2">
                     <div className="w-10 h-10 bg-green-600 rounded-full flex items-center justify-center shrink-0">
@@ -341,7 +385,7 @@ function CartPageInner() {
                 />
               </div>
 
-              {method === 'mpesa' && (
+              {currency === 'KES' && method === 'mpesa' && (
                 <div>
                   <label htmlFor="paystack-phone" className="block text-sm font-medium mb-1 text-stone-400">
                     M-Pesa Phone Number <span className="text-green-500">*</span>
@@ -372,8 +416,10 @@ function CartPageInner() {
                   </>
                 ) : (
                   <>
-                    <span className="font-bold">{method === 'mpesa' ? 'M' : '💳'}</span>
-                    Pay KSh {getTotal()} via {method === 'mpesa' ? 'M-Pesa' : 'Card'}
+                    <span className="font-bold">{currency === 'KES' && method === 'mpesa' ? 'M' : '💳'}</span>
+                    {currency === 'USD'
+                      ? `Pay in USD via card`
+                      : `Pay KSh ${getTotal()} via ${method === 'mpesa' ? 'M-Pesa' : 'Card'}`}
                   </>
                 )}
               </button>
