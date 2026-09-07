@@ -14,9 +14,17 @@
  *                    already trimmed and tagged, so re-encoding it loses nothing
  *                    and preserves the trim.
  *   store streams  → from the PRIVATE MASTER, never from the public MP3. The
- *                    stream is already lossy; encoding AAC from it would stack a
- *                    second generation of artefacts on top of the first. The
- *                    master is WAV, so going straight from it is clean.
+ *                    public stream is 128k, so encoding AAC from it would stack
+ *                    a second generation of artefacts on the worst available
+ *                    source. The master is always the better one.
+ *
+ *                    CAVEAT, found by running this: the masters are NOT all
+ *                    WAV. On this catalogue 13 of 30 were themselves MP3s, so
+ *                    for those the output IS second-generation — there is just
+ *                    no cleaner source in the system. The fix for that is not
+ *                    in this script: it is re-uploading real masters, which
+ *                    also matters because those files are what a paying
+ *                    customer downloads.
  *
  * SAFETY
  *   - Dry run by default. Pass --apply to write anything.
@@ -64,6 +72,26 @@ const H = { apikey: KEY, Authorization: `Bearer ${KEY}` };
 const LUFS = -14, TP = -1.5, LRA = 11;   // Spotify's playback target
 const TMP = os.tmpdir();
 
+/**
+ * Storage is over the network and the network is not reliable: a real run of
+ * this script died on file 32 of 33 with a Cloudflare 520 from Supabase
+ * Storage, which is a transient upstream hiccup and not something the caller
+ * did wrong. Retry the request rather than throwing away 31 files of work.
+ */
+async function withRetry(label, fn, attempts = 4) {
+  let lastErr;
+  for (let i = 1; i <= attempts; i++) {
+    try { return await fn(); } catch (e) {
+      lastErr = e;
+      if (i === attempts) break;
+      const waitMs = 1000 * 2 ** (i - 1);   // 1s, 2s, 4s
+      console.log(`  [retry ${i}/${attempts - 1}] ${label}: ${String(e.message).slice(0, 80)} — waiting ${waitMs}ms`);
+      await new Promise((r) => setTimeout(r, waitMs));
+    }
+  }
+  throw lastErr;
+}
+
 const run = (args) => new Promise((resolve, reject) => {
   const p = spawn(FFMPEG, args);
   let err = '';
@@ -101,9 +129,11 @@ const storagePathFromUrl = (url) => {
 };
 
 async function download(url, dest) {
-  const res = await fetch(url, { headers: H });
-  if (!res.ok) throw new Error(`download ${res.status}`);
-  fs.writeFileSync(dest, Buffer.from(await res.arrayBuffer()));
+  await withRetry('download', async () => {
+    const res = await fetch(url, { headers: H });
+    if (!res.ok) throw new Error(`download ${res.status}`);
+    fs.writeFileSync(dest, Buffer.from(await res.arrayBuffer()));
+  });
 }
 
 /** Private objects need the authenticated endpoint, not the public URL. */
@@ -111,13 +141,17 @@ const signedDownloadUrl = (bucket, p) =>
   `${URL_BASE}/storage/v1/object/${bucket}/${p}`;
 
 async function upload(bucket, p, buf) {
-  const res = await fetch(`${URL_BASE}/storage/v1/object/${bucket}/${p}`, {
-    method: 'POST',
-    headers: { ...H, 'Content-Type': 'audio/mp4', 'x-upsert': 'false' },
-    body: buf,
+  return withRetry('upload', async () => {
+    const res = await fetch(`${URL_BASE}/storage/v1/object/${bucket}/${p}`, {
+      method: 'POST',
+      // upsert on, so a retry after a half-failed upload overwrites its own
+      // partial object instead of colliding with it.
+      headers: { ...H, 'Content-Type': 'audio/mp4', 'x-upsert': 'true' },
+      body: buf,
+    });
+    if (!res.ok) throw new Error(`upload ${res.status}: ${(await res.text()).slice(0, 120)}`);
+    return `${URL_BASE}/storage/v1/object/public/${bucket}/${p}`;
   });
-  if (!res.ok) throw new Error(`upload ${res.status}: ${await res.text()}`);
-  return `${URL_BASE}/storage/v1/object/public/${bucket}/${p}`;
 }
 
 async function patchRow(table, id, snippet_url) {
@@ -186,6 +220,17 @@ async function processOne({ table, id, title, sourceUrl, sourceIsPrivate, curren
   }
 }
 
+// A batch of 33 should not be abandoned because one of them failed. Record the
+// failure, carry on, and report at the end — the run is resumable anyway, since
+// anything already .m4a is skipped.
+const failures = [];
+async function safely(title, fn) {
+  try { await fn(); } catch (e) {
+    failures.push([title, String(e.message).slice(0, 120)]);
+    console.log(`  [FAIL] ${title}: ${String(e.message).slice(0, 100)}`);
+  }
+}
+
 (async () => {
   console.log(APPLY ? '=== APPLYING ===' : `=== DRY RUN — no writes, no downloads${SAMPLE ? ` (measuring first ${SAMPLE})` : ''} ===`);
   let done = 0;
@@ -195,8 +240,8 @@ async function processOne({ table, id, title, sourceUrl, sourceIsPrivate, curren
   for (const b of beats) {
     if (!b.snippet_url) continue;
     if (b.snippet_url.endsWith('.m4a')) { console.log(`  [skip] ${b.title} already .m4a`); continue; }
-    await processOne({ table: 'beats', id: b.id, title: b.title, sourceUrl: b.snippet_url,
-      currentUrl: b.snippet_url, measureThis: done++ < SAMPLE });
+    await safely(b.title, () => processOne({ table: 'beats', id: b.id, title: b.title,
+      sourceUrl: b.snippet_url, currentUrl: b.snippet_url, measureThis: done++ < SAMPLE }));
   }
 
   const tracks = await (await fetch(`${URL_BASE}/rest/v1/tracks?select=id,title,snippet_url,full_url`, { headers: H })).json();
@@ -206,13 +251,17 @@ async function processOne({ table, id, title, sourceUrl, sourceIsPrivate, curren
     if (t.snippet_url.endsWith('.m4a')) { console.log(`  [skip] ${t.title} already .m4a`); continue; }
     const master = storagePathFromUrl(t.full_url);
     if (!master) { console.log(`  [warn] ${t.title}: no master found, skipping rather than stacking a second lossy encode`); continue; }
-    await processOne({
+    await safely(t.title, () => processOne({
       table: 'tracks', id: t.id, title: t.title,
       sourceUrl: signedDownloadUrl(master.bucket, master.path),
       sourceIsPrivate: true,
       currentUrl: t.snippet_url,
       measureThis: done++ < SAMPLE,
-    });
+    }));
+  }
+  if (failures.length) {
+    console.log(`\n${failures.length} FAILED — re-run to retry just these (converted files are skipped):`);
+    failures.forEach(([t, e]) => console.log(`  ${t}: ${e}`));
   }
   console.log(APPLY ? '\nDone.' : '\nNothing written. Re-run with --apply.');
 })().catch((e) => { console.error('FAILED:', e.message); process.exit(1); });
