@@ -10,7 +10,8 @@ import type { PublicRelease } from '@/lib/store';
 /**
  * Free streaming + the paid download button.
  *
- * The rule the store runs on: anyone can play the whole record for nothing,
+ * The rule the store runs on: once a record is out, anyone can play the whole
+ * thing for nothing (before a premiere, nobody can — see withPremiereGate),
  * but the file only comes after payment. So every track here plays from
  * `snippet_url` — a full-length 128kbps copy in the PUBLIC bucket. The master
  * lives in the private bucket and is only ever released as a signed URL by

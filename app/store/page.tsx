@@ -39,7 +39,12 @@ export default async function StorePage() {
       <div className="max-w-6xl mx-auto px-6 py-12">
         <h1 className="text-4xl md:text-5xl font-black tracking-tighter text-orange-50 mb-2">Store</h1>
         <p className="text-stone-500">
-          Singles and albums. Play anything free — pay only when you want the file.
+          {/* Was "Play anything free". That stopped being true the moment
+              premieres landed: a record before its date cannot be played at
+              all. The qualifier is small but the claim was the kind a visitor
+              can disprove in one click. */}
+          Singles and albums. Play a released record free — pay only when you want
+          the file.
         </p>
       </div>
 
