@@ -34,6 +34,12 @@ function CartPageInner() {
     item.priceUsd ? kes(item.priceUsd) ?? item.price : item.price;
   const totalKes = items.reduce((sum, i) => sum + lineKes(i), 0);
   const totalUsdBeats = items.reduce((sum, i) => sum + (i.priceUsd || 0), 0);
+  // A store release is KES-native (no priceUsd). The initialize route already
+  // refuses USD for these; knowing it here just moves the message earlier.
+  // A release is stored with priceUsd undefined (see useCartStore.addItem) —
+  // that absence IS the marker. `kind` lives on i.beat, not on the item, so
+  // checking i.kind here would always be undefined and silently pass.
+  const hasRelease = items.some((i) => i.priceUsd == null);
   const searchParams = useSearchParams();
   const [mounted, setMounted] = useState(false);
   const [phone, setPhone] = useState('');
@@ -41,6 +47,10 @@ function CartPageInner() {
   const [method, setMethod] = useState<'mpesa' | 'card'>('mpesa');
   // KES -> Paystack (M-Pesa or card). USD -> Flutterwave.
   const [currency, setCurrency] = useState<'KES' | 'USD'>('KES');
+  // null = still asking. Until the answer lands the dollar button stays
+  // disabled, because offering an option that might not work is worse than
+  // showing it a moment late.
+  const [usdLive, setUsdLive] = useState<boolean | null>(null);
   const [paying, setPaying] = useState(false);
   const [paid, setPaid] = useState(false);
   const [stkSent, setStkSent] = useState(false);
@@ -52,6 +62,18 @@ function CartPageInner() {
 
   useEffect(() => {
     setMounted(true);
+  }, []);
+
+  // Ask the server whether dollars can actually be charged. See
+  // app/api/payments/methods/route.ts for why the client cannot know this.
+  useEffect(() => {
+    let alive = true;
+    fetch('/api/payments/methods')
+      .then((r) => r.json())
+      .then((d) => { if (alive) setUsdLive(Boolean(d?.usd)); })
+      // A failed probe must not silently offer a dead path.
+      .catch(() => { if (alive) setUsdLive(false); });
+    return () => { alive = false; };
   }, []);
 
   const validatePhone = (num: string) => {
@@ -288,11 +310,23 @@ function CartPageInner() {
           <div className="flex justify-between items-center px-5 py-4 bg-stone-900/60 border-t border-stone-800">
             <span className="text-base font-bold text-orange-100">Total</span>
             <span className="text-right">
-              {/* Charged in shillings — Paystack only takes KES — so that is
-                  the figure shown big. The dollar subtotal is the beats. */}
-              <span className="block text-lg font-bold text-orange-100 tabular-nums">{formatKes(totalKes)}</span>
-              {totalUsdBeats > 0 && (
-                <span className="block text-[11px] text-stone-500 tabular-nums">{formatUsd(totalUsdBeats)} in beats</span>
+              {/* Whichever currency will actually be CHARGED is the big number.
+                  Showing a big KSh total to someone whose card is about to be
+                  billed in dollars reads as a bait-and-switch, even though both
+                  figures are correct — the buyer cannot tell which one leaves
+                  their account. */}
+              {currency === 'USD' ? (
+                <>
+                  <span className="block text-lg font-bold text-orange-100 tabular-nums">{formatUsd(totalUsdBeats)}</span>
+                  <span className="block text-[11px] text-stone-500 tabular-nums">about {formatKes(totalKes)}</span>
+                </>
+              ) : (
+                <>
+                  <span className="block text-lg font-bold text-orange-100 tabular-nums">{formatKes(totalKes)}</span>
+                  {totalUsdBeats > 0 && (
+                    <span className="block text-[11px] text-stone-500 tabular-nums">{formatUsd(totalUsdBeats)} in beats</span>
+                  )}
+                </>
               )}
             </span>
           </div>
@@ -307,24 +341,54 @@ function CartPageInner() {
                   worked out server-side, so both buttons charge the same beat. */}
               <p className="text-xs font-bold text-stone-500 uppercase tracking-wide mb-1">Pay in</p>
               <div className="flex gap-2 mb-4">
-                {(['KES', 'USD'] as const).map((c) => (
-                  <button
-                    key={c}
-                    type="button"
-                    onClick={() => { setCurrency(c); if (c === 'USD') setMethod('card'); setMessage(''); }}
-                    className={`flex-1 py-3 rounded-lg border font-bold text-sm transition ${
-                      currency === c
-                        ? 'bg-orange-950/40 border-orange-500 text-orange-300'
-                        : 'border-stone-700 text-stone-400 hover:border-orange-500/50'
-                    }`}
-                  >
-                    {c === 'KES' ? 'KSh · M-Pesa or card' : 'USD · card'}
-                  </button>
-                ))}
+                {(['KES', 'USD'] as const).map((c) => {
+                  // Two separate reasons the dollar option can be unusable, and
+                  // the buyer deserves to know WHICH before typing anything:
+                  // the provider is not switched on, or their cart holds a
+                  // store release (KES-native, no dollar price). The server
+                  // rejects both anyway — this just stops the wasted trip.
+                  const blocked =
+                    c === 'USD'
+                      ? usdLive === false
+                        ? 'Dollar payments aren\u2019t switched on yet \u2014 pay in KSh below.'
+                        : hasRelease
+                          ? 'Your cart has a store release, which is sold in KSh only.'
+                          : usdLive === null
+                            ? 'Checking\u2026'
+                            : null
+                      : null;
+                  return (
+                    <button
+                      key={c}
+                      type="button"
+                      disabled={Boolean(blocked)}
+                      title={blocked || undefined}
+                      onClick={() => { setCurrency(c); if (c === 'USD') setMethod('card'); setMessage(''); }}
+                      className={`flex-1 py-3 rounded-lg border font-bold text-sm transition ${
+                        blocked
+                          ? 'border-stone-800 text-stone-600 cursor-not-allowed'
+                          : currency === c
+                            ? 'bg-orange-950/40 border-orange-500 text-orange-300'
+                            : 'border-stone-700 text-stone-400 hover:border-orange-500/50'
+                      }`}
+                    >
+                      {c === 'KES' ? 'KSh \u00b7 M-Pesa or card' : 'USD \u00b7 card'}
+                    </button>
+                  );
+                })}
               </div>
-              {currency === 'USD' && (
+              {/* The reason, in full, under the buttons — a title tooltip is
+                  invisible on a phone, which is most of this audience. */}
+              {usdLive === false && (
                 <p className="text-xs text-stone-500 mb-3">
-                  Dollar payments go through Flutterwave. Store releases are KSh only.
+                  Dollar card payments aren&apos;t switched on yet. Everything is payable
+                  in shillings below, at the live exchange rate.
+                </p>
+              )}
+              {usdLive && hasRelease && (
+                <p className="text-xs text-stone-500 mb-3">
+                  Store releases are sold in shillings only, so this cart checks out in
+                  KSh. Remove the release to pay for beats in dollars.
                 </p>
               )}
 
@@ -358,11 +422,27 @@ function CartPageInner() {
               )}
 
               {currency === 'USD' ? (
+                // An international buyer has never heard of Flutterwave. Being
+                // redirected to an unrecognised brand at the moment of paying is
+                // a trust cliff — the buyer cannot verify who is taking the
+                // money, so they abandon. One sentence saying what it IS costs
+                // nothing and removes the whole question.
                 <div className="p-4 bg-orange-950/20 border border-orange-900/30 rounded-xl mb-4">
-                  <h3 className="font-bold text-orange-400 mb-1">Card payment in US dollars</h3>
-                  <p className="text-sm text-orange-300/80">
-                    You&apos;ll be taken to Flutterwave&apos;s secure page. We never see your card number.
-                  </p>
+                  <h3 className="font-bold text-orange-400 mb-1">
+                    Card payment in US dollars &mdash; {formatUsd(totalUsdBeats)}
+                  </h3>
+                  <ul className="text-sm text-orange-300/80 space-y-1.5 mt-2">
+                    <li>
+                      Pressing pay opens <strong>Flutterwave</strong>, a licensed African payment
+                      processor. It handles the card details; JST.BEAT never sees your card number.
+                    </li>
+                    <li>Visa, Mastercard and American Express are accepted.</li>
+                    <li>
+                      Your card is charged <strong>{formatUsd(totalUsdBeats)}</strong> — the shilling
+                      figure is shown for reference only, and is not what leaves your account.
+                    </li>
+                    <li>You come straight back here, and the download unlocks as soon as it clears.</li>
+                  </ul>
                 </div>
               ) : method === 'mpesa' ? (
                 <div className="p-4 bg-green-950/20 border border-green-900/30 rounded-xl mb-4">
@@ -399,7 +479,9 @@ function CartPageInner() {
               <div>
                 <label htmlFor="paystack-email" className="block text-sm font-medium mb-1 text-stone-400">
                   Email <span className="text-green-500">*</span>
-                  <span className="text-stone-600 text-xs ml-1">(required by Paystack for receipts)</span>
+                  <span className="text-stone-600 text-xs ml-1">
+                    (required by {currency === 'USD' ? 'Flutterwave' : 'Paystack'} for receipts)
+                  </span>
                 </label>
                 <input
                   id="paystack-email"
@@ -457,7 +539,7 @@ function CartPageInner() {
                 <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
                 </svg>
-                Payments secured &amp; processed by Paystack
+                Payments secured &amp; processed by {currency === 'USD' ? 'Flutterwave' : 'Paystack'}
               </div>
 
               <button
