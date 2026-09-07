@@ -42,7 +42,8 @@ export function PremiereBadge({
   const state = premiereState(premiereAt, now);
   if (state.status !== 'upcoming') return null;
 
-  const label = `Premieres in ${formatCountdown(state.msRemaining)}`;
+  const remaining = formatCountdown(state.msRemaining);
+  const label = `Premieres in ${remaining}`;
   // The countdown says how long; the title says exactly when. A countdown alone
   // cannot be put in a calendar.
   const exact = formatPremiereDate(state.at);
@@ -62,11 +63,16 @@ export function PremiereBadge({
 
   return (
     <span
-      className="absolute top-2 right-2 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide bg-black/80 backdrop-blur-sm"
+      className="absolute top-2 right-2 max-w-[calc(100%-1rem)] px-1.5 sm:px-2 py-0.5 rounded-full text-[9px] sm:text-[10px] font-bold uppercase tracking-wide bg-black/80 backdrop-blur-sm whitespace-nowrap"
       style={{ color: 'var(--accent-hot)' }}
       title={exact}
+      aria-label={label}
     >
-      {label}
+      {/* On a phone the card is ~160px wide and the full phrase ran to about
+          three quarters of it, straight into the ALBUM chip on the left. The
+          countdown is the information; "Premieres" is the part that can go. */}
+      <span className="sm:hidden">{remaining}</span>
+      <span className="hidden sm:inline">{label}</span>
     </span>
   );
 }

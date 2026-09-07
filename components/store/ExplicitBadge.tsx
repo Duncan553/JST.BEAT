@@ -40,7 +40,10 @@ export function ExplicitBadge({
       className="absolute bottom-2 left-2 inline-flex flex-col bg-black font-sans leading-none select-none overflow-hidden"
       // The mark is a fixed-proportion lockup, so it scales as one unit rather
       // than each line picking its own size.
-      style={{ width: small ? 46 : 76 }}
+      // Fixed px made it 29% of a 160px phone card and 17% of a desktop one —
+      // the same badge reading as oversized on the device most people use.
+      // clamp() keeps it proportional across both.
+      style={{ width: small ? 'clamp(34px, 9.5vw, 46px)' : 'clamp(58px, 14vw, 76px)' }}
       // The image is decorative once the label is read out, but the information
       // itself matters — so it carries a real label instead of being hidden.
       role="img"
@@ -49,7 +52,7 @@ export function ExplicitBadge({
       <span
         className="text-white font-black text-center"
         style={{
-          fontSize: small ? 6.5 : 10.5,
+          fontSize: small ? 'clamp(5px, 1.4vw, 6.5px)' : 'clamp(8px, 2vw, 10.5px)',
           letterSpacing: '-0.01em',
           padding: small ? '3px 2px 2px' : '5px 3px 3px',
         }}
@@ -62,7 +65,7 @@ export function ExplicitBadge({
       <span
         className="bg-white text-black font-bold text-center w-full"
         style={{
-          fontSize: small ? 4.2 : 6.5,
+          fontSize: small ? 'clamp(3.2px, 0.9vw, 4.2px)' : 'clamp(5px, 1.2vw, 6.5px)',
           letterSpacing: '0.02em',
           padding: small ? '1.5px 0' : '2.5px 0',
         }}

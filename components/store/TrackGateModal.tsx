@@ -77,7 +77,12 @@ export function TrackGateModal({
 
       <div
         ref={panelRef}
-        className="relative w-full sm:max-w-md rounded-t-2xl sm:rounded-2xl border p-6 motion-rise"
+        className="relative w-full sm:max-w-md rounded-t-2xl sm:rounded-2xl border p-6 motion-rise max-h-[90dvh] overflow-y-auto"
+        // dvh, not vh: on a phone `vh` ignores the browser's own collapsing
+        // toolbar, so a sheet capped at 90vh can still push its buttons under
+        // the address bar. Without a cap at all, the buy button on a short
+        // phone would sit below the fold with nothing to scroll — the sheet is
+        // the scroll container, since the page behind it is locked.
         style={{ background: 'var(--surface-1)', borderColor: 'var(--line)' }}
       >
         <button

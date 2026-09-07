@@ -145,11 +145,13 @@ export function AudioPlayer() {
       role="region"
       aria-label="Audio player"
     >
-      <div className="max-w-6xl mx-auto px-4 py-3 flex items-center gap-5">
+      <div className="max-w-6xl mx-auto px-3 sm:px-4 py-3 flex items-center gap-3 sm:gap-5">
         {/* Vinyl Disc - JS rotated */}
         <div 
           ref={vinylRef}
-          className="relative w-16 h-16 shrink-0"
+          // 64px of artwork on a 360px phone left barely 120px for the
+          // title and the scrubber, which are the parts you actually use.
+          className="relative w-12 h-12 sm:w-16 sm:h-16 shrink-0"
           style={{ willChange: 'transform' }}
         >
           <div className="absolute -inset-1 rounded-full bg-black/40 blur-sm" />
