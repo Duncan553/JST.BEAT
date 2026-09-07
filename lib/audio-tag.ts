@@ -76,11 +76,18 @@ export async function createSnippet(
   const tmpDir = os.tmpdir();
   const id = crypto.randomUUID();
   const inPath = path.join(tmpDir, `${id}-in${ext}`);
-  const outPath = path.join(tmpDir, `${id}-out${ext}`);
+  // The OUTPUT extension is fixed, not inherited. It used to be `${ext}`, which
+  // meant the format of a "snippet" was whatever the producer happened to
+  // upload: a WAV beat produced a WAV snippet — lossless, uncompressed, ~10x
+  // the bytes — streamed to people on mobile data. Quality was an accident.
+  const outPath = path.join(tmpDir, `${id}-out${PREVIEW_EXT}`);
 
   await fs.promises.writeFile(inPath, audioBuffer);
 
   try {
+    const stats = await measureLoudness(inPath);
+    const norm = loudnormFilter(stats);
+
     await new Promise<void>((resolve, reject) => {
       const cmd = ffmpeg().input(inPath);
 
@@ -89,12 +96,18 @@ export async function createSnippet(
           .input(tagFile)
           .complexFilter([
             `[1:a]volume=${TAG_VOLUME}[tag]`,
-            '[0:a][tag]amix=inputs=2:duration=first:dropout_transition=0[aout]',
+            // Normalise AFTER the tag is mixed in, so the level being corrected
+            // is the level people actually hear.
+            '[0:a][tag]amix=inputs=2:duration=first:dropout_transition=0[mixed]',
+            `[mixed]${norm}[aout]`,
           ])
           .outputOptions(['-map', '[aout]']);
+      } else {
+        cmd.audioFilters(norm);
       }
 
       cmd
+        .outputOptions(AAC_OUTPUT_OPTIONS)
         .duration(MAX_SNIPPET_SECONDS) // caps output length regardless of the branch above
         .on('error', reject)
         .on('end', () => resolve())
@@ -108,10 +121,117 @@ export async function createSnippet(
   }
 }
 
-// Bitrate for the free store stream. High enough that the song is genuinely
-// enjoyable end to end, low enough that it is not a substitute for the file
-// a buyer pays for.
+/* ---------------------------------------------------------------------------
+   ENCODING — what every public copy on this site is made with.
+
+   1. AAC, not MP3. Both are lossy and both are ~128 kbps here, but AAC is a
+      decade newer and clearly better at the same bitrate — MP3 at 128k is
+      audibly not transparent, AAC at 128k is close. Same bytes, better sound,
+      so there is no trade to weigh. Spotify's own web player streams AAC; MP3
+      is not on its list at any tier.
+
+   2. AAC-LC in .m4a rather than Opus. Opus is better again per byte, but
+      Safari/iOS support for it has been patchy for years, and a beat that will
+      not play on somebody's iPhone is worth less than a slightly larger file.
+
+   3. `+faststart` moves the index to the front of the file so playback can
+      begin before the whole thing has downloaded. On mobile data that is the
+      difference between instant and a three-second stall.
+
+   4. 44.1 kHz stereo, never upsampled — upsampling adds bytes and no
+      information.
+   --------------------------------------------------------------------------- */
 const STREAM_BITRATE = '128k';
+
+/** Every public copy is .m4a now. Exported so the upload routes cannot drift. */
+export const PREVIEW_EXT = '.m4a';
+export const PREVIEW_CONTENT_TYPE = 'audio/mp4';
+
+const AAC_OUTPUT_OPTIONS = [
+  '-c:a', 'aac',
+  '-b:a', STREAM_BITRATE,
+  '-ar', '44100',
+  '-ac', '2',
+  '-movflags', '+faststart',
+];
+
+/* ---------------------------------------------------------------------------
+   LOUDNESS — the part people actually hear as "sounds good".
+
+   Spotify normalises every track to -14 LUFS integrated (EBU R128). This is a
+   bigger perceived-quality lever than bitrate: a beat mastered at -6 LUFS next
+   to one at -16 makes the quiet one sound weak and thin, however clean it is.
+   Normalising means the catalogue plays at one level and nobody reaches for
+   the volume between tracks.
+
+   TWO passes, not one. Single-pass loudnorm is a live estimate and applies
+   dynamic compression as it goes, which pumps on music — exactly the artefact
+   we would be adding while claiming to improve quality. The first pass only
+   measures; the second applies the measured numbers as a fixed, linear gain.
+
+   It is BEST EFFORT. If measurement fails or the binary is missing, the encode
+   still happens without normalisation — an upload must never fail because the
+   loudness pass could not run.
+   --------------------------------------------------------------------------- */
+const LUFS_TARGET = -14;   // matches Spotify's default playback target
+const TRUE_PEAK = -1.5;    // headroom, so lossy encoding cannot clip on decode
+const LRA = 11;            // loudness range; leaves music its dynamics
+
+type LoudnessStats = {
+  input_i: string; input_tp: string; input_lra: string;
+  input_thresh: string; target_offset: string;
+};
+
+/**
+ * Pass 1: measure only, decode to nowhere. Resolves null on any failure, which
+ * the caller treats as "skip normalisation".
+ */
+async function measureLoudness(inPath: string): Promise<LoudnessStats | null> {
+  if (!FFMPEG_BIN) return null;
+  return new Promise((resolve) => {
+    let stderr = '';
+    ffmpeg(inPath)
+      .audioFilters(`loudnorm=I=${LUFS_TARGET}:TP=${TRUE_PEAK}:LRA=${LRA}:print_format=json`)
+      .format('null')
+      .output(process.platform === 'win32' ? 'NUL' : '/dev/null')
+      .on('stderr', (line: string) => { stderr += line + '\n'; })
+      .on('error', () => resolve(null))
+      .on('end', () => {
+        // loudnorm prints its JSON block last, after all the normal ffmpeg
+        // chatter. Match INNERMOST brace groups (`[^{}]*`) rather than a greedy
+        // `[\s\S]*`: greedy would run from the first `{` anywhere in ffmpeg's
+        // output to the last `}`, swallowing unrelated lines and failing to
+        // parse. loudnorm's block has no nested objects, so this is exact.
+        const match = stderr.match(/\{[^{}]*\}/g);
+        if (!match) return resolve(null);
+        try {
+          const parsed = JSON.parse(match[match.length - 1]);
+          resolve(parsed?.input_i ? (parsed as LoudnessStats) : null);
+        } catch {
+          resolve(null);
+        }
+      })
+      .run();
+  });
+}
+
+/**
+ * The pass-2 filter string, or a plain loudnorm if measuring failed.
+ * `linear=true` asks for a single fixed gain rather than a compressor. ffmpeg
+ * silently falls back to dynamic mode when linear gain would breach the true-peak
+ * ceiling — i.e. only on material so quiet that it needs enormous gain. Real
+ * masters sit close enough to the target that linear engages, which is the case
+ * that matters.
+ */
+function loudnormFilter(stats: LoudnessStats | null): string {
+  const base = `loudnorm=I=${LUFS_TARGET}:TP=${TRUE_PEAK}:LRA=${LRA}`;
+  if (!stats) return base;
+  return (
+    `${base}:measured_I=${stats.input_i}:measured_TP=${stats.input_tp}` +
+    `:measured_LRA=${stats.input_lra}:measured_thresh=${stats.input_thresh}` +
+    `:offset=${stats.target_offset}:linear=true:print_format=summary`
+  );
+}
 
 /**
  * Builds the PUBLIC streaming copy of a STORE track.
@@ -125,7 +245,7 @@ const STREAM_BITRATE = '128k';
  *  2. NO producer tag. A tag over a beat protects an unsold instrumental.
  *     Stamping one over a singer's finished record would just vandalise it.
  *
- * Protection comes from quality instead: this is a 128kbps MP3, while the
+ * Protection comes from quality instead: this is a 128kbps AAC stream, while the
  * original the buyer downloads stays untouched in the private bucket. Someone
  * pulling this out of devtools gets the stream, never the master.
  */
@@ -134,16 +254,20 @@ export async function createStreamCopy(audioBuffer: Buffer, originalFilename: st
   const tmpDir = os.tmpdir();
   const id = crypto.randomUUID();
   const inPath = path.join(tmpDir, `${id}-in${ext}`);
-  const outPath = path.join(tmpDir, `${id}-stream.mp3`);
+  const outPath = path.join(tmpDir, `${id}-stream${PREVIEW_EXT}`);
 
   await fs.promises.writeFile(inPath, audioBuffer);
 
   try {
+    // This is the copy people listen to end to end, so it is the one that most
+    // needs to sit at the same level as everything else in the catalogue.
+    const stats = await measureLoudness(inPath);
+
     await new Promise<void>((resolve, reject) => {
       ffmpeg()
         .input(inPath)
-        .audioCodec('libmp3lame')
-        .audioBitrate(STREAM_BITRATE)
+        .audioFilters(loudnormFilter(stats))
+        .outputOptions(AAC_OUTPUT_OPTIONS)
         .on('error', reject)
         .on('end', () => resolve())
         .save(outPath);

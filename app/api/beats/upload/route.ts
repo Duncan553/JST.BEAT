@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase-admin';
 import { rateLimit } from '@/lib/rate-limit';
 import { requireUploader } from '@/lib/auth-server';
-import { createSnippet } from '@/lib/audio-tag';
+import { createSnippet, PREVIEW_EXT, PREVIEW_CONTENT_TYPE } from '@/lib/audio-tag';
 import { getUsdToKes, usdToKes } from '@/lib/pricing';
 import { verifyUploaded, publicUrl, rollbackOrphans } from '@/lib/storage-verify';
 import { sanitizeFilename } from '@/lib/upload-kinds';
@@ -94,10 +94,15 @@ export async function POST(req: NextRequest) {
     const srcName = sanitizeFilename(source.path.split('/').pop() || 'beat.mp3');
     const snippetBuffer = await createSnippet(Buffer.from(await blob.arrayBuffer()), srcName, producer);
 
-    const snippetPath = `beats/${Date.now()}-${crypto.randomUUID()}-${srcName}`;
+    // Name and type follow the ENCODER, not the upload. Previously this reused
+    // srcName and the original file's MIME type, so a WAV beat produced
+    // "beat.wav" served as audio/wav — the browser then had to fetch a
+    // lossless file to play a preview.
+    const snippetBase = srcName.replace(/\.[^.]+$/, '');
+    const snippetPath = `beats/${Date.now()}-${crypto.randomUUID()}-${snippetBase}${PREVIEW_EXT}`;
     const { error: upErr } = await supabaseAdmin.storage
       .from('beats-public')
-      .upload(snippetPath, snippetBuffer, { contentType: full.type || 'audio/mpeg', upsert: false });
+      .upload(snippetPath, snippetBuffer, { contentType: PREVIEW_CONTENT_TYPE, upsert: false });
     if (upErr) throw upErr;
     owned.push({ bucket: 'beats-public', path: snippetPath });
 
