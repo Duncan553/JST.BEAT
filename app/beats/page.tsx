@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useBeatsStore } from '@/stores/useBeatsStore';
-import { BeatChip } from '@/components/beat-chip/BeatChip';
+import { BeatRow } from '@/components/beat-row/BeatRow';
 import { Beat } from '@/types/beat';
 import { CatalogSearch, matchesQuery } from '@/components/CatalogSearch';
 import Link from 'next/link';
@@ -57,11 +57,19 @@ export default function BeatsPage() {
         )}
 
         {!error && loading ? (
-          <div className="flex flex-wrap gap-3 animate-pulse">
+          <div className="space-y-2 animate-pulse">
             {[1, 2, 3, 4, 5, 6, 7, 8].map((n) => (
-              <div key={n} className="inline-flex items-center gap-2 px-3 py-2 rounded-full border border-stone-800 bg-stone-900/40">
-                <div className="w-8 h-8 rounded-full bg-stone-800" />
-                <div className="w-20 h-3 bg-stone-800 rounded" />
+              <div
+                key={n}
+                className="beat-row rounded-xl border px-3 py-2.5"
+                style={{ borderColor: 'var(--line)', background: 'var(--surface-1)' }}
+              >
+                <div className="w-11 h-11 rounded-full" style={{ background: 'var(--surface-2)' }} />
+                <div className="w-12 h-12 md:w-14 md:h-14 rounded-lg" style={{ background: 'var(--surface-2)' }} />
+                <div className="h-3 w-1/3 rounded" style={{ background: 'var(--surface-2)' }} />
+                <div className="hidden md:block h-3 rounded" style={{ background: 'var(--surface-2)' }} />
+                <div className="hidden md:block h-3 rounded" style={{ background: 'var(--surface-2)' }} />
+                <div className="h-3 rounded" style={{ background: 'var(--surface-2)' }} />
               </div>
             ))}
           </div>
@@ -120,9 +128,14 @@ export default function BeatsPage() {
                 ) : (
                   // motion-stagger cascades the chips in 40ms apart as the
                   // catalogue lands — see .claude/skills/motion/SKILL.md
-                  <div className="flex flex-wrap gap-3 motion-stagger">
+                  // A vertical list, not a wrapped grid: fixed columns mean
+                  // BPM, key and price line up down the page, which is what
+                  // makes a long catalogue comparable instead of just long.
+                  // motion-stagger caps at 8 items (see the motion skill), so
+                  // beat 60 doesn't sit waiting on beat 1.
+                  <div className="space-y-2 motion-stagger">
                     {visible.map((beat) => (
-                      <BeatChip key={beat.id} beat={beat} />
+                      <BeatRow key={beat.id} beat={beat} />
                     ))}
                   </div>
                 )}

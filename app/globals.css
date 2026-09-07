@@ -404,3 +404,159 @@ input[type="range"]::-moz-range-thumb {
   from { transform: rotate(0deg); }
   to { transform: rotate(360deg); }
 }
+
+/* ---------------------------------------------------------------------------
+   REVEAL ON SCROLL
+   Driven by components/Reveal.tsx, which flips data-in once and then
+   disconnects its observer. Transform + opacity only, 16px of travel — inside
+   the 8-24px the motion skill allows, because the eye tracks distance, not
+   milliseconds.
+   --------------------------------------------------------------------------- */
+.reveal {
+  opacity: 0;
+  transform: translateY(16px);
+  transition: opacity var(--dur-4) var(--ease-out),
+              transform var(--dur-4) var(--ease-out);
+  /* Tells the browser to promote this to its own layer BEFORE the transition
+     starts, so the first frame isn't the one that stutters. */
+  will-change: opacity, transform;
+}
+.reveal[data-in='true'] {
+  opacity: 1;
+  transform: none;
+  will-change: auto;
+}
+@media (prefers-reduced-motion: reduce) {
+  .reveal, .reveal[data-in='false'] {
+    opacity: 1;
+    transform: none;
+    transition: none;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+   LAYERED HERO
+   Three layers on one axis: the word JST, the photo, then BEAT over the top.
+   The photo physically cuts the wordmark in two.
+
+   This is stacking order, not clipping or a mask — which means it survives any
+   screen width, needs no JS, and costs nothing to render. The negative margins
+   are in `em`, so the overlap scales with the type instead of breaking the
+   moment the font size changes.
+   --------------------------------------------------------------------------- */
+.hero-stack {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  /* Own stacking context, so the layers below can't escape it and land on top
+     of the header. */
+  isolation: isolate;
+
+  /* The word size lives here as a variable, NOT inline on .hero-word, because
+     the overlap below is computed from it. Writing the overlap as `-0.26em` on
+     .hero-plate looked right and was wrong: `em` resolves against the PLATE's
+     own font-size (the inherited 16px), not the 136px word, so the layers
+     overlapped by 4px instead of 35 and the composition fell apart. Deriving
+     both from one variable makes that mistake impossible. */
+  --hero-word: clamp(3rem, 12vw, 7.5rem);
+}
+
+.hero-word {
+  font-family: var(--font-display);
+  font-weight: 800;
+  /* Tight leading is most of what makes big type look designed, and it is what
+     lets the layers overlap this closely without colliding. */
+  line-height: 0.82;
+  letter-spacing: -0.05em;
+  font-size: var(--hero-word);
+  color: var(--text-1);
+  user-select: none;
+}
+
+.hero-word--back  { z-index: 1; }
+.hero-word--front { z-index: 3; }
+
+.hero-plate {
+  z-index: 2;
+  position: relative;
+  /* Landscape, and wide. The empty space in this hero was always HORIZONTAL —
+     a portrait plate made the composition taller without filling any of it.
+     A 5:4 plate roughly doubles the width for less height than a 4:5 did, so
+     the picture carries the block instead of floating in it. */
+  width: min(400px, 68vw);
+  aspect-ratio: 5 / 4;
+  border-radius: 1rem;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  /* Overlap the word above by roughly a third of its cap height. */
+  margin-top: calc(var(--hero-word) * -0.28);
+}
+
+/* Pull the front word back up over the bottom edge of the photo. */
+.hero-word--front { margin-top: calc(var(--hero-word) * -0.34); }
+
+/* The photo's bottom edge fades into the page so it reads as one composition
+   rather than a rectangle sitting on a background. */
+.hero-plate::after {
+  content: '';
+  position: absolute;
+  inset: auto 0 0 0;
+  /* 30%, not 45%. The fade exists only so the front word reads where it
+     crosses the plate's bottom edge — on a landscape plate a 45% fade was
+     washing out half the photograph for no reason. */
+  height: 30%;
+  background: linear-gradient(to top, var(--surface-0), transparent);
+  pointer-events: none;
+}
+
+/* --------------------------------------------------------------------------
+   SECTION EYEBROW
+   The small caps label above a section title. Carries what the section IS, so
+   the big title is free to be short.
+   -------------------------------------------------------------------------- */
+.section-eyebrow {
+  display: inline-block;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--accent-hot);
+}
+
+/* ---------------------------------------------------------------------------
+   BEAT LIST ROW
+   Fixed columns are the entire reason this beats a card grid at scale: BPM,
+   key and price land on the same x-position in every row, so the eye runs
+   straight down one number. `minmax(0,1fr)` on the title column — not plain
+   `1fr` — is what lets its text actually truncate; a bare 1fr has an implicit
+   min-content floor and will push the price column off the right edge instead
+   of shrinking.
+   --------------------------------------------------------------------------- */
+.beat-row {
+  display: grid;
+  align-items: center;
+  gap: 0.75rem;
+  /* phone: play · art · title · price */
+  grid-template-columns: auto auto minmax(0, 1fr) auto;
+}
+
+@media (min-width: 768px) {
+  /* desktop: play · art · title · tags · bpm · key · price
+     The title is capped rather than greedy — one very long title should not
+     set the column width for the whole catalogue — and the leftover width
+     goes to tags, which is the column people actually scan for a vibe. */
+  .beat-row {
+    grid-template-columns: auto auto minmax(0, 22rem) minmax(0, 1fr) 5.5rem 7rem 6.5rem;
+    gap: 1rem;
+  }
+}
+
+/* Hover is a surface change, not a shadow — on a dark page a shadow just reads
+   as blur, while a lighter surface reads as closer. Pointer devices only, so a
+   phone tap doesn't leave a row stuck in a hover state. */
+@media (hover: hover) {
+  .beat-row:hover {
+    background: var(--surface-2) !important;
+    border-color: var(--line-2) !important;
+  }
+}

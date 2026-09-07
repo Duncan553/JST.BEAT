@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase-admin';
 import { requireUploaderInfo } from '@/lib/auth-server';
 import { rateLimit } from '@/lib/rate-limit';
-import { createStreamCopy } from '@/lib/audio-tag';
+import { createStreamCopy, PREVIEW_EXT, PREVIEW_CONTENT_TYPE } from '@/lib/audio-tag';
 import { verifyUploaded, publicUrl, rollbackOrphans } from '@/lib/storage-verify';
 import { sanitizeFilename } from '@/lib/upload-kinds';
 import crypto from 'crypto';
@@ -75,10 +75,10 @@ export async function POST(req: NextRequest) {
     // Public stream: the WHOLE song at 128kbps, untagged. Free to play, but
     // it is not the master — that stays private and is what the buyer pays for.
     const snippet = await createStreamCopy(audioBuffer, safeName);
-    const snippetPath = `release-previews/${Date.now()}-${crypto.randomUUID()}-${safeName.replace(/\.[^.]+$/, '')}.mp3`;
+    const snippetPath = `release-previews/${Date.now()}-${crypto.randomUUID()}-${safeName.replace(/\.[^.]+$/, '')}${PREVIEW_EXT}`;
     const { error: snipErr } = await supabaseAdmin.storage
       .from('beats-public')
-      .upload(snippetPath, snippet, { contentType: 'audio/mpeg', upsert: false });
+      .upload(snippetPath, snippet, { contentType: PREVIEW_CONTENT_TYPE, upsert: false });
     if (snipErr) throw snipErr;
     owned.push({ bucket: 'beats-public', path: snippetPath });
 

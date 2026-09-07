@@ -5,6 +5,8 @@ import type { Metadata } from 'next';
 import { getPublishedRelease, getPublishedReleases } from '@/lib/store';
 import { absoluteUrl, SITE_NAME, safeJsonLd } from '@/lib/site';
 import { ReleasePlayer } from '@/components/store/ReleasePlayer';
+import { PremiereBadge } from '@/components/store/PremiereBadge';
+import { ExplicitBadge } from '@/components/store/ExplicitBadge';
 
 export const revalidate = 300;
 
@@ -83,16 +85,25 @@ export default async function ReleasePage({ params }: { params: Promise<{ id: st
 
       <div className="max-w-4xl mx-auto px-6 py-10">
         <div className="flex flex-col sm:flex-row gap-8 mb-10">
-          <Image
-            src={release.cover_art}
-            alt={`${release.title} cover`}
-            width={320}
-            height={320}
-            className="w-56 h-56 sm:w-72 sm:h-72 rounded-xl object-cover border border-stone-800 shrink-0"
-            priority
-          />
+          {/* The badge is positioned against this wrapper, so the cover needs
+              to establish the containing block — a bare <Image> has nothing for
+              an absolute child to anchor to. */}
+          <div className="relative w-56 h-56 sm:w-72 sm:h-72 shrink-0">
+            <Image
+              src={release.cover_art}
+              alt={`${release.title} cover`}
+              width={320}
+              height={320}
+              className="w-full h-full rounded-xl object-cover border border-stone-800"
+              priority
+            />
+            <ExplicitBadge explicit={release.explicit} size="md" />
+          </div>
           <div className="min-w-0 flex-1">
-            <p className="text-xs uppercase tracking-wide text-stone-500 mb-2">{release.kind}</p>
+            <div className="flex flex-wrap items-center gap-3 mb-2">
+              <p className="text-xs uppercase tracking-wide text-stone-500">{release.kind}</p>
+              <PremiereBadge premiereAt={release.premiere_at} variant="inline" />
+            </div>
             <h1 className="text-3xl md:text-4xl font-black tracking-tight text-orange-50 mb-2" style={{ textWrap: 'balance' }}>
               {release.title}
             </h1>
