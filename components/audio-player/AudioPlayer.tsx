@@ -11,11 +11,20 @@ export function AudioPlayer() {
   const rotationRef = useRef(0);
   const rafRef = useRef<number | null>(null);
   
-  const { currentBeatId, isPlaying, snippetUrl, currentBeatTitle, currentBeatCover, pause, resume } = usePlayerStore();
+  const {
+    currentBeatId, isPlaying, snippetUrl, currentBeatTitle, currentBeatCover,
+    currentSubtitle, volume, muted, pause, resume, setVolume, toggleMute,
+  } = usePlayerStore();
   const [progress, setProgress] = useState(0);
   const [duration, setDuration] = useState(0);
   const [mounted, setMounted] = useState(false);
   const [audioError, setAudioError] = useState<string | null>(null);
+  // iOS refuses programmatic volume changes on HTMLMediaElement — Apple
+  // reserves volume for the hardware buttons, and the assignment silently does
+  // nothing. Feature-detect rather than sniff the user agent, and hide the
+  // slider where it cannot work: a control that does nothing is worse than no
+  // control at all.
+  const [canSetVolume, setCanSetVolume] = useState(true);
 
   // JS-driven vinyl rotation
   useEffect(() => {
@@ -47,6 +56,24 @@ export function AudioPlayer() {
   useEffect(() => {
     setMounted(true);
   }, []);
+
+  // Probe once: set a value that is definitely different from the default and
+  // read it straight back. Only a platform that ignores the write fails this.
+  useEffect(() => {
+    const probe = document.createElement('audio');
+    probe.volume = 0.5;
+    setCanSetVolume(probe.volume === 0.5);
+  }, []);
+
+  // Volume lives in the store (and localStorage); the element is told about it
+  // here. Kept in its own effect so changing the volume never re-runs the
+  // load/play effect below and restarts the track.
+  useEffect(() => {
+    const audio = audioRef.current;
+    if (!audio) return;
+    audio.volume = volume;
+    audio.muted = muted;
+  }, [volume, muted, snippetUrl]);
 
   useEffect(() => {
     const audio = audioRef.current;
@@ -164,6 +191,13 @@ export function AudioPlayer() {
           <p className="text-sm font-bold text-white truncate leading-tight tracking-tight">
             {currentBeatTitle || 'Select a beat'}
           </p>
+          {/* Set only by store tracks — a track title alone ("Intro") tells you
+              nothing about which record you are listening to. */}
+          {currentSubtitle && (
+            <p className="text-[11px] truncate mt-0.5" style={{ color: 'var(--text-3)' }}>
+              {currentSubtitle}
+            </p>
+          )}
           {audioError && <p className="text-[10px] text-red-400 mt-0.5">{audioError}</p>}
 
           <div className="flex items-center gap-2 mt-2">
@@ -184,9 +218,43 @@ export function AudioPlayer() {
           </div>
         </div>
 
-        <div className="hidden sm:block relative w-12 h-12 shrink-0">
-          <div className="absolute bottom-0 right-0 w-3 h-3 bg-stone-700 rounded-full border border-stone-600" />
-          <div className="absolute bottom-1.5 right-1.5 w-[2px] h-10 bg-stone-500 origin-bottom-right rounded-full transition-transform duration-300" style={{ transform: `rotate(${-30 + (progressPercent * 0.5)}deg)` }} />
+        {/* VOLUME. Hidden entirely on platforms that ignore the write (iOS),
+            and on the narrowest phones where the row has no room — the mute
+            button stays in both cases, because muting works everywhere. */}
+        <div className="flex items-center gap-2 shrink-0">
+          <button
+            onClick={toggleMute}
+            aria-label={muted || volume === 0 ? 'Unmute' : 'Mute'}
+            aria-pressed={muted}
+            className="w-9 h-9 grid place-items-center rounded-full text-stone-400 hover:text-white hover:bg-stone-800 transition-colors duration-[var(--dur-1)] focus-visible:ring-2 focus-visible:ring-orange-500 outline-none cursor-pointer"
+          >
+            {muted || volume === 0 ? (
+              <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M3 9v6h4l5 5V4L7 9H3z" />
+                <path d="M16.5 12l3-3-1.06-1.06L15.44 11 12.5 8.06 11.44 9.12 14.38 12l-2.94 2.88 1.06 1.06 2.94-2.94 2.94 2.94L19.5 15l-3-3z" />
+              </svg>
+            ) : (
+              <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M3 9v6h4l5 5V4L7 9H3z" />
+                {/* Second arc only above half, so the icon reports the level */}
+                <path d="M14 8.2a5 5 0 010 7.6v-1.9a3.2 3.2 0 000-3.8V8.2z" />
+                {volume > 0.5 && <path d="M16.5 5.5a8.5 8.5 0 010 13v-1.9a6.7 6.7 0 000-9.2V5.5z" />}
+              </svg>
+            )}
+          </button>
+
+          {canSetVolume && (
+            <input
+              type="range"
+              min={0}
+              max={1}
+              step={0.01}
+              value={muted ? 0 : volume}
+              onChange={(e) => setVolume(parseFloat(e.target.value))}
+              aria-label="Volume"
+              className="hidden sm:block w-20 cursor-pointer accent-orange-500"
+            />
+          )}
         </div>
 
         <button
