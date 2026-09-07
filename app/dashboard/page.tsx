@@ -171,6 +171,60 @@ export default function DashboardPage() {
     loadReleases();
   };
 
+  // datetime-local speaks LOCAL time; the column is timestamptz. Formatting the
+  // stored value with toISOString().slice(0,16) would show UTC in the box —
+  // in Nairobi (UTC+3) a 6pm premiere would read back as 3pm, and re-saving it
+  // would walk the date three hours earlier every time. Build the local string
+  // by hand instead.
+  const toLocalInput = (iso: string | null) => {
+    if (!iso) return '';
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return '';
+    const pad = (n: number) => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  };
+
+  // Set or clear a release's premiere date. Empty string clears it, which puts
+  // the release back to an ordinary one — the same state every existing row is
+  // already in.
+  const setPremiere = async (release: any, localValue: string) => {
+    const iso = localValue ? new Date(localValue).toISOString() : null;
+    const { data, error } = await supabase
+      .from('releases')
+      .update({ premiere_at: iso })
+      .eq('id', release.id)
+      .select();
+    if (error) {
+      // Until migrations/2026-09-07-premiere.sql is run the column doesn't
+      // exist; say that rather than showing a raw Postgres error.
+      setMessage(
+        error.code === '42703'
+          ? 'Premiere dates need migrations/2026-09-07-premiere.sql run in Supabase first.'
+          : `Error: ${error.message}`
+      );
+      return;
+    }
+    // Same 0-rows-no-error trap as everywhere else on this page.
+    if (!data || data.length === 0) { setMessage('Error: nothing changed — the database rejected it.'); return; }
+    setMessage(iso ? 'Premiere date set' : 'Premiere date cleared');
+    setTimeout(() => setMessage(''), 2000);
+    loadReleases();
+  };
+
+  // Parental advisory. The artist's call — never inferred from the audio, and
+  // never applied by default, because labelling someone's record explicit when
+  // it isn't is its own kind of wrong.
+  const toggleExplicit = async (release: any) => {
+    const { data, error } = await supabase
+      .from('releases')
+      .update({ explicit: !release.explicit })
+      .eq('id', release.id)
+      .select();
+    if (error) { setMessage(`Error: ${error.message}`); return; }
+    if (!data || data.length === 0) { setMessage('Error: nothing changed — the database rejected it.'); return; }
+    loadReleases();
+  };
+
   const deleteRelease = async (release: any) => {
     if (!window.confirm(`Delete "${release.title}" and all its tracks? This cannot be undone.`)) return;
     // tracks cascade via the foreign key, so one delete clears both tables.
@@ -513,6 +567,46 @@ export default function DashboardPage() {
                         {r.artist || 'No artist set'} · {r.kind} · {r.tracks?.length ?? 0} track{(r.tracks?.length ?? 0) === 1 ? '' : 's'}
                       </p>
                       <p className="text-xs text-stone-600 mt-1">KSh {r.price} · {r.producer}</p>
+
+                      {/* PREMIERE DATE. Optional — leave it empty for an
+                          ordinary release. The line under the input says what
+                          the buyer will actually see, in plain words, because
+                          "premiere_at" on its own tells the artist nothing. */}
+                      <div className="mt-3 flex flex-wrap items-center gap-2">
+                        <label className="text-xs text-stone-500" htmlFor={`premiere-${r.id}`}>
+                          Premiere
+                        </label>
+                        <input
+                          id={`premiere-${r.id}`}
+                          type="datetime-local"
+                          defaultValue={toLocalInput(r.premiere_at)}
+                          onChange={(e) => setPremiere(r, e.target.value)}
+                          className="bg-stone-950 border border-stone-700 rounded px-2 py-1 text-xs text-stone-200 focus-visible:ring-2 focus-visible:ring-orange-500 outline-none"
+                        />
+                        {r.premiere_at && (
+                          <button
+                            onClick={() => setPremiere(r, '')}
+                            className="text-xs text-stone-500 hover:text-stone-300 underline focus-visible:ring-2 focus-visible:ring-orange-500 rounded outline-none"
+                          >
+                            Clear
+                          </button>
+                        )}
+                      </div>
+                      <label className="flex items-center gap-2 mt-2 text-xs text-stone-400 cursor-pointer w-fit">
+                        <input
+                          type="checkbox"
+                          checked={!!r.explicit}
+                          onChange={() => toggleExplicit(r)}
+                          className="accent-orange-500 cursor-pointer"
+                        />
+                        Parental advisory (explicit content)
+                      </label>
+
+                      <p className="text-[11px] text-stone-600 mt-1">
+                        {r.premiere_at
+                          ? 'Buyers download straight away; everyone else can play it free. The countdown shows on the store until this date.'
+                          : 'No premiere — plays free, downloads after payment, like any release.'}
+                      </p>
                     </div>
                     <div className="flex items-center gap-3 shrink-0">
                       <span className={`text-xs px-2 py-1 rounded-full ${r.published ? 'bg-green-950/50 text-green-400' : 'bg-stone-800 text-stone-400'}`}>
